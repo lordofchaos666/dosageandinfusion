@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pediatric NICU/Ward Calculator</title>
+    <style>
+        :root {
+            --bg: #f4f6f8;
+            --card: #ffffff;
+            --primary: #2c3e50;
+            --secondary: #e9ecef;
+            --accent: #e74c3c;
+            --success: #27ae60;
+            --info: #2980b9;
+            --text: #333;
+            --text-light: #6c757d;
+            --border: #dee2e6;
+        }
+        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { margin: 0; background-color: var(--bg); color: var(--text); display: flex; justify-content: center; }
+        
+        .app-container { width: 100%; max-width: 500px; height: 100vh; background: var(--bg); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 0 20px rgba(0,0,0,0.1); }
+        .header { background: var(--primary); color: white; padding: 15px 20px; text-align: center; font-size: 1.2rem; font-weight: bold; }
+        
+        .weight-bar { background: var(--card); padding: 15px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; z-index: 10; }
+        .weight-bar label { font-weight: 600; font-size: 1.1rem; }
+        .weight-bar input { width: 80px; font-size: 1.2rem; text-align: center; border: 1px solid var(--border); border-radius: 6px; padding: 5px; }
+        
+        .content { flex: 1; overflow-y: auto; padding: 15px; }
+        
+        .card { background: var(--card); border-radius: 12px; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.04); border: 1px solid var(--border); }
+        .card-title { font-size: 1rem; color: var(--primary); font-weight: 600; margin-top: 0; margin-bottom: 15px; border-bottom: 1px solid var(--secondary); padding-bottom: 8px; }
+        
+        .form-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .form-row label { font-size: 0.95rem; color: var(--text-light); flex: 1; font-weight: 500;}
+        .form-row .input-group { display: flex; align-items: center; justify-content: flex-end; flex: 1; }
+        .form-row input, .form-row select { width: 90px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; text-align: right; font-size: 1rem; }
+        .form-row select { width: 100%; text-align: left; font-weight: bold; color: var(--primary); }
+        .unit { margin-left: 8px; font-size: 0.85rem; color: var(--text-light); width: 60px; }
+
+        .slider-container { margin: 15px 0; background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid var(--border); }
+        input[type="range"] { width: 100%; margin: 10px 0; }
+        .dose-readout { text-align: center; font-size: 1.4rem; font-weight: bold; color: var(--primary); }
+        
+        .recipe-box { background: #e8f8f5; border: 2px solid var(--success); border-radius: 10px; padding: 15px; margin-top: 15px; }
+        .recipe-box.blue { background: #ebf5fb; border-color: var(--info); }
+        .recipe-header { text-align: center; font-weight: bold; margin-bottom: 10px; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 1px; }
+        .recipe-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 1.1rem; align-items: center; }
+        .recipe-val { font-weight: bold; font-size: 1.3rem; color: var(--primary); }
+        .recipe-total { border-top: 2px dashed var(--success); padding-top: 10px; margin-top: 5px; font-weight: bold; }
+        .recipe-box.blue .recipe-total { border-top-color: var(--info); }
+        
+        .instruction { background: var(--primary); color: white; text-align: center; padding: 12px; border-radius: 8px; margin-top: 15px; font-weight: bold; font-size: 1.1rem; }
+        .error-text { background: #fadbd8; color: #c0392b; padding: 10px; border-radius: 6px; text-align: center; font-weight: bold; display: none; margin-top: 15px; }
+
+        .search-bar { width: 100%; padding: 12px; border: 2px solid var(--primary); border-radius: 8px; font-size: 1rem; margin-bottom: 15px; }
+        .drug-item { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 15px; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        .drug-name { font-weight: bold; color: var(--primary); font-size: 1.15rem; margin-bottom: 8px; border-bottom: 1px solid var(--secondary); padding-bottom: 5px; }
+        .drug-dose { font-size: 0.95rem; color: var(--text); margin-bottom: 6px; line-height: 1.4; }
+        .drug-dose strong { color: #2c3e50; }
+        .drug-notes { font-size: 0.85rem; color: var(--text-light); font-style: italic; background: #f8f9fa; padding: 8px; border-radius: 4px; margin-top: 8px; }
+
+        .btn-download { display: block; width: 100%; background: var(--text-light); color: white; text-align: center; padding: 12px; border: none; border-radius: 8px; font-weight: bold; margin-top: 10px; cursor: pointer; }
+        .tabs { display: flex; background: var(--card); border-top: 1px solid var(--border); box-shadow: 0 -2px 10px rgba(0,0,0,0.05); }
+        .tab { flex: 1; padding: 12px 5px; text-align: center; font-weight: 600; color: var(--text-light); cursor: pointer; border-bottom: 3px solid transparent; font-size: 0.9rem; }
+        .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .highlight-text { color: var(--info); font-weight: bold; font-size: 1.2rem; }
+    </style>
+</head>
+<body>
+
+<div class="app-container" id="app-root">
+    <div class="header">Pediatric Calculator & Reference</div>
+    
+    <div class="weight-bar" id="weight-header">
+        <label>Patient Weight</label>
+        <div>
+            <input type="number" id="global-weight" value="10" step="0.1" min="0.1">
+            <span style="font-weight: bold; color: var(--text-light);">kg</span>
+        </div>
+    </div>
+
+    <div class="content">
+        <div id="tab-infusion" class="tab-content active">
+            <div class="card">
+                <div class="form-row">
+                    <select id="infusion-select"></select>
+                </div>
+                <div class="form-row" style="margin-top: 10px;">
+                    <label>Ampoule Conc.</label>
+                    <div class="input-group">
+                        <input type="number" id="amp-conc" value="1" step="0.1" min="0.1">
+                        <span class="unit" id="conc-unit">mg/mL</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3 class="card-title">Target Dose</h3>
+                <div class="slider-container">
+                    <div class="dose-readout">
+                        <span id="dose-val">0.00</span> 
+                        <span id="dose-unit" style="font-size: 1rem; color: var(--text-light);">mcg/kg/min</span>
+                    </div>
+                    <input type="range" id="dose-slider" min="0" max="1" step="0.01" value="0">
+                </div>
+            </div>
+
+            <div class="card" style="padding: 0; border: none; box-shadow: none; background: transparent;">
+                <div class="recipe-box" id="recipe-container">
+                    <div class="recipe-header" style="color: var(--success);">Preparation (12 mL Syringe)</div>
+                    <div class="recipe-row">
+                        <span>1. Draw Drug:</span>
+                        <span class="recipe-val" id="drug-vol-out">0.00 mL</span>
+                    </div>
+                    <div class="recipe-row" style="font-size: 0.9rem; color: var(--text-light); margin-top: -8px; margin-bottom: 12px; justify-content: flex-end;">
+                        (<span id="total-drug-mg">0.00 mg</span> total)
+                    </div>
+                    <div class="recipe-row">
+                        <span>2. Add NS:</span>
+                        <span class="recipe-val" id="ns-vol-out">12.00 mL</span>
+                    </div>
+                    <div class="recipe-row recipe-total">
+                        <span>Total Volume:</span>
+                        <span class="recipe-val">12.00 mL</span>
+                    </div>
+                </div>
+                <div id="volume-error" class="error-text">Drug required exceeds 12 mL!</div>
+                <div class="instruction" id="pump-instruction">Run Pump at 1 mL/hr</div>
+            </div>
+        </div>
+
+        <div id="tab-gir" class="tab-content">
+            <div class="card">
+                <h3 class="card-title">24-Hour Fluid Volumes</h3>
+                
+                <div class="form-row">
+                    <label>Target GIR</label>
+                    <div class="input-group">
+                        <input type="number" id="gir-target" value="6" step="0.1" min="1">
+                        <span class="unit">mg/kg/min</span>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <label>Total Fluid Volume</label>
+                    <div class="input-group">
+                        <input type="number" id="fluid-total-vol" value="0" step="10" min="0">
+                        <span class="unit">mL/day</span>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <label>Additional Fluid<br><span style="font-size: 0.75rem; color: var(--text-light);">(Enteral, Meds over 24h)</span></label>
+                    <div class="input-group">
+                        <input type="number" id="fluid-extra-vol" value="0" step="10" min="0">
+                        <span class="unit">mL/day</span>
+                    </div>
+                </div>
+                
+                <div class="form-row" style="border-top: 1px solid var(--border); padding-top: 10px; margin-top: 5px;">
+                    <label>Net Dextrose Pump Rate</label>
+                    <div class="input-group">
+                        <span class="highlight-text" id="net-dex-rate">0.0</span>
+                        <span class="unit" style="font-weight: bold;">mL/hr</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3 class="card-title">Syringe Prep (Fixed 50 mL)</h3>
+                
+                <div class="form-row">
+                    <label>Base Fluid</label>
+                    <div class="input-group">
+                        <select id="dex-low-select" style="text-align: right;">
+                            <option value="5">D5W (5%)</option>
+                            <option value="10" selected>D10W (10%)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label>High Conc. Fluid</label>
+                    <div class="input-group">
+                        <select id="dex-high-select" style="text-align: right; color: var(--accent);">
+                            <option value="10">D10W (10%)</option>
+                            <option value="25" selected>D25W (25%)</option>
+                            <option value="50">D50W (50%)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="recipe-box blue">
+                    <div class="recipe-header" style="color: var(--info);">Req. Concentration: <span id="req-dex-conc">0.0</span>%</div>
+                    
+                    <div class="recipe-row">
+                        <span id="label-high-dex">D25W Volume:</span>
+                        <span class="recipe-val" id="high-vol-out">0.00 mL</span>
+                    </div>
+                    <div class="recipe-row">
+                        <span id="label-low-dex">D10W Volume:</span>
+                        <span class="recipe-val" id="low-vol-out">0.00 mL</span>
+                    </div>
+                    
+                    <div class="recipe-row recipe-total">
+                        <span>Total Syringe:</span>
+                        <span class="recipe-val">50.0 mL</span>
+                    </div>
+                </div>
+                <div id="dex-error" class="error-text">Target concentration falls outside your selected Base/High fluid limits!</div>
+            </div>
+            <button class="btn-download" onclick="downloadHTML()">📥 Download App to Device</button>
+        </div>
+
+        <div id="tab-drugs" class="tab-content">
+            <div class="card" style="background: transparent; border: none; box-shadow: none; padding: 0;">
+                <input type="text" class="search-bar" id="drug-search" placeholder="Search drug, condition (e.g., Meningitis, Neonate)...">
+                <div id="drug-list-container"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="tabs">
+        <div class="tab active" onclick="switchTab('infusion')">Infusion (1 mL/hr)</div>
+        <div class="tab" onclick="switchTab('gir')">Dextrose Prep</div>
+        <div class="tab" onclick="switchTab('drugs')">Drug Doses</div>
+    </div>
+</div>
+
+<script>
+    const infusionDrugs = {
+        "Adrenaline": { unit: "mcg/kg/min", prepUnit: "mg", stdConc: 1, doseMin: 0.01, doseMax: 1.0, doseStep: 0.01, doseDef: 0.1, isPerMin: true, prepToDoseMult: 1000 },
+        "Noradrenaline": { unit: "mcg/kg/min", prepUnit: "mg", stdConc: 1, doseMin: 0.01, doseMax: 1.0, doseStep: 0.01, doseDef: 0.1, isPerMin: true, prepToDoseMult: 1000 },
+        "Dopamine": { unit: "mcg/kg/min", prepUnit: "mg", stdConc: 40, doseMin: 2, doseMax: 20, doseStep: 1, doseDef: 5, isPerMin: true, prepToDoseMult: 1000 },
+        "Dobutamine": { unit: "mcg/kg/min", prepUnit: "mg", stdConc: 50, doseMin: 2, doseMax: 20, doseStep: 1, doseDef: 5, isPerMin: true, prepToDoseMult: 1000 },
+        "Milrinone": { unit: "mcg/kg/min", prepUnit: "mg", stdConc: 1, doseMin: 0.25, doseMax: 0.75, doseStep: 0.05, doseDef: 0.5, isPerMin: true, prepToDoseMult: 1000 },
+        "Fentanyl": { unit: "mcg/kg/hr", prepUnit: "mcg", stdConc: 50, doseMin: 0.5, doseMax: 5, doseStep: 0.5, doseDef: 1, isPerMin: false, prepToDoseMult: 1 },
+        "Ketamine": { unit: "mg/kg/hr", prepUnit: "mg", stdConc: 50, doseMin: 0.1, doseMax: 2.5, doseStep: 0.1, doseDef: 1, isPerMin: false, prepToDoseMult: 1 },
+        "Lasix (Furosemide)": { unit: "mg/kg/hr", prepUnit: "mg", stdConc: 10, doseMin: 0.1, doseMax: 1.0, doseStep: 0.1, doseDef: 0.1, isPerMin: false, prepToDoseMult: 1 },
+        "Sildenafil": { unit: "mg/kg/hr", prepUnit: "mg", stdConc: 0.8, doseMin: 0.1, doseMax: 1.0, doseStep: 0.1, doseDef: 0.4, isPerMin: false, prepToDoseMult: 1 },
+        "Midazolam": { unit: "mg/kg/hr", prepUnit: "mg", stdConc: 1, doseMin: 0.05, doseMax: 0.2, doseStep: 0.01, doseDef: 0.1, isPerMin: false, prepToDoseMult: 1 },
+        "Labetalol": { unit: "mg/kg/hr", prepUnit: "mg", stdConc: 5, doseMin: 0.25, doseMax: 3.0, doseStep: 0.25, doseDef: 1.0, isPerMin: false, prepToDoseMult: 1 },
+        "Insulin": { unit: "units/kg/hr", prepUnit: "units", stdConc: 40, doseMin: 0.05, doseMax: 0.2, doseStep: 0.01, doseDef: 0.1, isPerMin: false, prepToDoseMult: 1 }
+    };
+
+    // Extended database explicitly separated for CNS and Age limits
+    const pedDoses = [
+        { name: "Acyclovir", dose: "<strong>Neonates (<14 days):</strong> 20 mg/kg/dose IV q8h<br><strong>Children (HSV Encephalitis/CNS):</strong> 10-15 mg/kg/dose IV q8h<br><strong>Children (Varicella/Immunocomp):</strong> 10 mg/kg/dose IV q8h", notes: "Maintain adequate hydration to prevent renal crystallization." },
+        { name: "Amikacin", dose: "<strong>Neonates (<29 days):</strong> 15 mg/kg/dose IV q24h (Adjust based on gestational age/PMA)<br><strong>Infants/Children:</strong> 15-22.5 mg/kg/day IV div q8h", notes: "Monitor peaks and troughs. Ototoxic and nephrotoxic." },
+        { name: "Ampicillin", dose: "<strong>Neonate (<7 days):</strong> 50 mg/kg/dose q12h. <span style='color:red'>[CNS/Meningitis]:</span> 100 mg/kg/dose q12h.<br><strong>Neonate (>7 days):</strong> 50 mg/kg/dose q8h. <span style='color:red'>[CNS/Meningitis]:</span> 100 mg/kg/dose q8h.<br><strong>Children:</strong> 100-200 mg/kg/day div q6h. <span style='color:red'>[CNS/Meningitis]:</span> 300-400 mg/kg/day div q6h.", notes: "Max 12g/day. Adjust in renal impairment." },
+        { name: "Cefotaxime", dose: "<strong>Neonate (<7 days):</strong> 50 mg/kg/dose q12h.<br><strong>Neonate (>7 days):</strong> 50 mg/kg/dose q8h.<br><strong>Children:</strong> 150-200 mg/kg/day div q8h. <span style='color:red'>[CNS/Meningitis]:</span> 225-300 mg/kg/day div q6-8h.", notes: "Preferred cephalosporin in neonates (does not displace bilirubin)." },
+        { name: "Ceftriaxone", dose: "<strong>Neonates:</strong> AVOID if hyperbilirubinemic or receiving IV Calcium.<br><strong>Children (Standard):</strong> 50-75 mg/kg/day IV/IM div q12-24h.<br><span style='color:red'>[CNS/Meningitis]:</span> 100 mg/kg/day IV div q12-24h.", notes: "Max 4g/day. May cause biliary sludging." },
+        { name: "Dexamethasone", dose: "<strong>Croup:</strong> 0.6 mg/kg x 1 dose PO/IM/IV (Max 16mg)<br><strong>Airway Edema/Extubation:</strong> 0.25-0.5 mg/kg/dose q6h x 4-6 doses.<br><span style='color:red'>[CNS/Bacterial Meningitis]:</span> 0.15 mg/kg/dose IV q6h x 4 days.", notes: "Give CNS dose 10-20 min before or with first antibiotic dose." },
+        { name: "Gentamicin", dose: "<strong>Neonates (Term, <7 days):</strong> 4-5 mg/kg/dose q24h.<br><strong>Neonates (Preterm):</strong> Varies by PMA (e.g. 5 mg/kg/dose q36h-48h).<br><strong>Children:</strong> 5-7.5 mg/kg/day div q8h OR 5-7.5 mg/kg/dose q24h.", notes: "Trough goal < 1 mcg/mL. Peak goal 8-10 mcg/mL for severe infections." },
+        { name: "Levetiracetam (Keppra)", dose: "<strong>Neonates:</strong> Initial 10-20 mg/kg/dose IV/PO. Maint: 10-30 mg/kg/day div q12h.<br><strong>Children:</strong> Initial 20 mg/kg/dose. <span style='color:red'>[CNS/Status Epilepticus]:</span> 40-60 mg/kg/dose IV x 1 (Max 4.5g).", notes: "Maint dose increased by 10-20 mg/kg/day increments." },
+        { name: "Meropenem", dose: "<strong>Neonates:</strong> 20 mg/kg/dose q8-12h (Based on PMA/Age).<br><strong>Children (Standard):</strong> 60 mg/kg/day div q8h.<br><span style='color:red'>[CNS/Meningitis]:</span> 120 mg/kg/day div q8h (Max 2g/dose).", notes: "Broad spectrum. Watch for seizure threshold lowering." },
+        { name: "Midazolam", dose: "<strong>Status Epilepticus:</strong> 0.1-0.2 mg/kg/dose IV/IM (Max 5mg).<br><strong>Intranasal (Seizure/Sedation):</strong> 0.2 mg/kg/dose IN.", notes: "May cause respiratory depression." },
+        { name: "Paracetamol (Acetaminophen)", dose: "<strong>Neonates:</strong> 10-15 mg/kg/dose q6-8h.<br><strong>Children:</strong> 10-15 mg/kg/dose PO/PR/IV q4-6h.", notes: "Max 75 mg/kg/day. Beware hepatotoxicity." },
+        { name: "Phenobarbital", dose: "<strong>Load (All ages):</strong> 20 mg/kg IV x 1. May repeat 5-10 mg/kg.<br><strong>Maint (Neonates):</strong> 3-4 mg/kg/day div q12-24h.<br><strong>Maint (Children):</strong> 4-6 mg/kg/day div q12h.", notes: "Administer loading dose no faster than 1-2 mg/kg/min." },
+        { name: "Phenytoin", dose: "<strong>Load:</strong> 15-20 mg/kg IV.<br><strong>Maint:</strong> 5-7 mg/kg/day div q8-12h.", notes: "Max IV rate 1-3 mg/kg/min due to cardiovascular collapse risk." },
+        { name: "Vancomycin", dose: "<strong>Neonates:</strong> 15 mg/kg/dose. Freq depends on PMA (q12h to q24h).<br><strong>Children (Standard):</strong> 40-60 mg/kg/day IV div q6-8h.<br><span style='color:red'>[CNS/Meningitis/MRSA]:</span> 60 mg/kg/day IV div q6h.", notes: "Target CNS trough 15-20 mcg/mL. Infuse over 60 min to avoid Red Man Syndrome." }
+    ];
+
+    const weightInput = document.getElementById('global-weight');
+    const weightHeader = document.getElementById('weight-header');
+
+    // Infusion Elements
+    const infSelect = document.getElementById('infusion-select');
+    const ampConc = document.getElementById('amp-conc');
+    const concUnit = document.getElementById('conc-unit');
+    const doseSlider = document.getElementById('dose-slider');
+    const doseVal = document.getElementById('dose-val');
+    const doseUnit = document.getElementById('dose-unit');
+    const drugVolOut = document.getElementById('drug-vol-out');
+    const nsVolOut = document.getElementById('ns-vol-out');
+    const totalDrugMg = document.getElementById('total-drug-mg');
+    const volumeError = document.getElementById('volume-error');
+    const recipeContainer = document.getElementById('recipe-container');
+    const pumpInstruction = document.getElementById('pump-instruction');
+
+    // Dextrose Elements
+    const girTarget = document.getElementById('gir-target');
+    const fluidTotalVol = document.getElementById('fluid-total-vol');
+    const fluidExtraVol = document.getElementById('fluid-extra-vol');
+    const netDexRateOut = document.getElementById('net-dex-rate');
+    const dexLowSelect = document.getElementById('dex-low-select');
+    const dexHighSelect = document.getElementById('dex-high-select');
+    const labelLowDex = document.getElementById('label-low-dex');
+    const labelHighDex = document.getElementById('label-high-dex');
+    const reqDexConcOut = document.getElementById('req-dex-conc');
+    const lowVolOut = document.getElementById('low-vol-out');
+    const highVolOut = document.getElementById('high-vol-out');
+    const dexError = document.getElementById('dex-error');
+
+    // Drug Elements
+    const drugSearch = document.getElementById('drug-search');
+    const drugListContainer = document.getElementById('drug-list-container');
+
+    function switchTab(tabId) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+        document.getElementById(`tab-${tabId}`).classList.add('active');
+        event.currentTarget.classList.add('active');
+        weightHeader.style.display = (tabId === 'drugs') ? 'none' : 'flex';
+    }
+
+    function init() {
+        for (let d in infusionDrugs) {
+            let opt = document.createElement('option');
+            opt.value = d;
+            opt.innerText = d;
+            infSelect.appendChild(opt);
+        }
+        infSelect.selectedIndex = 0;
+        loadInfusionProfile();
+        calculateDextrose();
+        renderDrugList("");
+    }
+
+    function loadInfusionProfile() {
+        const d = infusionDrugs[infSelect.value];
+        concUnit.innerText = `${d.prepUnit}/mL`;
+        ampConc.value = d.stdConc;
+        doseUnit.innerText = d.unit;
+        doseSlider.min = d.doseMin;
+        doseSlider.max = d.doseMax;
+        doseSlider.step = d.doseStep;
+        doseSlider.value = d.doseDef;
+        calculateInfusion();
+    }
+
+    function calculateInfusion() {
+        const w = parseFloat(weightInput.value) || 0;
+        const conc = parseFloat(ampConc.value) || 1;
+        const dose = parseFloat(doseSlider.value) || 0;
+        const d = infusionDrugs[infSelect.value];
+
+        doseVal.innerText = dose.toFixed(2);
+        let totalUnits = d.isPerMin ? (dose * w * 720) / d.prepToDoseMult : (dose * w * 12) / d.prepToDoseMult;
+        totalDrugMg.innerText = `${totalUnits.toFixed(2)} ${d.prepUnit}`;
+
+        const drugVol = totalUnits / conc;
+        const nsVol = 12 - drugVol;
+
+        drugVolOut.innerText = drugVol.toFixed(2) + " mL";
+        nsVolOut.innerText = nsVol.toFixed(2) + " mL";
+
+        if (drugVol > 12) {
+            volumeError.style.display = "block";
+            recipeContainer.style.opacity = "0.3";
+            pumpInstruction.style.background = "#95a5a6";
+            pumpInstruction.innerText = "Invalid Preparation";
+        } else {
+            volumeError.style.display = "none";
+            recipeContainer.style.opacity = "1";
+            pumpInstruction.style.background = "var(--primary)";
+            pumpInstruction.innerText = `Run Pump at 1 mL/hr = ${dose.toFixed(2)} ${d.unit}`;
+        }
+    }
+
+    function calculateDextrose() {
+        const w = parseFloat(weightInput.value) || 0;
+        const gir = parseFloat(girTarget.value) || 0;
+        
+        // Fetch 24-hour VOLUMES (defaults to 0)
+        const totalVolDay = parseFloat(fluidTotalVol.value) || 0; 
+        const extraVolDay = parseFloat(fluidExtraVol.value) || 0; 
+        
+        const lowDexPercent = parseFloat(dexLowSelect.value);
+        const highDexPercent = parseFloat(dexHighSelect.value);
+        
+        labelLowDex.innerText = `D${lowDexPercent}W Volume:`;
+        labelHighDex.innerText = `D${highDexPercent}W Volume:`;
+
+        // Volume logic: Subtract volumes first, then find the hourly pump rate
+        const netVolDay = Math.max(0, totalVolDay - extraVolDay);
+        const netHourlyRate = netVolDay / 24; 
+
+        netDexRateOut.innerText = netHourlyRate.toFixed(1);
+
+        if (w > 0 && netHourlyRate > 0) {
+            // Target Concentration Formula: (GIR * Wt * 60) / (Rate * 10)
+            const reqDex = (gir * w * 60) / (netHourlyRate * 10);
+            reqDexConcOut.innerText = reqDex.toFixed(1);
+
+            if (reqDex < lowDexPercent || reqDex > highDexPercent || lowDexPercent >= highDexPercent) {
+                dexError.style.display = "block";
+                highVolOut.innerText = "ERR";
+                lowVolOut.innerText = "ERR";
+                return;
+            } else {
+                dexError.style.display = "none";
+            }
+
+            const partsDiff = highDexPercent - lowDexPercent;
+            const partsHigh = reqDex - lowDexPercent;
+            const highVolume = (partsHigh / partsDiff) * 50;
+            const lowVolume = 50 - highVolume;
+
+            highVolOut.innerText = highVolume.toFixed(1) + " mL";
+            lowVolOut.innerText = lowVolume.toFixed(1) + " mL";
+        } else {
+            reqDexConcOut.innerText = "0.0";
+            highVolOut.innerText = "0.0 mL";
+            lowVolOut.innerText = "0.0 mL";
+            dexError.style.display = "none";
+        }
+    }
+
+    function renderDrugList(query) {
+        drugListContainer.innerHTML = "";
+        const lowerQ = query.toLowerCase();
+        
+        // Filter searches both name AND dose text (so "Meningitis" or "Neonate" works)
+        const filtered = pedDoses.filter(d => 
+            d.name.toLowerCase().includes(lowerQ) || 
+            d.dose.toLowerCase().includes(lowerQ) ||
+            d.notes.toLowerCase().includes(lowerQ)
+        );
+        
+        if (filtered.length === 0) {
+            drugListContainer.innerHTML = `<div class="drug-item" style="text-align:center; color: #7f8c8d;">No results found for "${query}"</div>`;
+            return;
+        }
+
+        filtered.forEach(drug => {
+            const el = document.createElement('div');
+            el.className = 'drug-item';
+            el.innerHTML = `
+                <div class="drug-name">${drug.name}</div>
+                <div class="drug-dose">${drug.dose}</div>
+                <div class="drug-notes">${drug.notes}</div>
+            `;
+            drugListContainer.appendChild(el);
+        });
+    }
+
+    function downloadHTML() {
+        const htmlContent = document.documentElement.outerHTML;
+        const blob = new Blob([htmlContent], { type: 'text/html' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'Pediatric_Dosing_App.html';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+    }
+
+    infSelect.addEventListener('change', loadInfusionProfile);
+    weightInput.addEventListener('input', () => { calculateInfusion(); calculateDextrose(); });
+    ampConc.addEventListener('input', calculateInfusion);
+    doseSlider.addEventListener('input', calculateInfusion);
+    
+    girTarget.addEventListener('input', calculateDextrose);
+    fluidTotalVol.addEventListener('input', calculateDextrose);
+    fluidExtraVol.addEventListener('input', calculateDextrose);
+    dexLowSelect.addEventListener('change', calculateDextrose);
+    dexHighSelect.addEventListener('change', calculateDextrose);
+
+    drugSearch.addEventListener('input', (e) => renderDrugList(e.target.value));
+
+    init();
+</script>
+
+</body>
+</html>
