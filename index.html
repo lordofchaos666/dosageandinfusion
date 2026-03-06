@@ -1,1120 +1,679 @@
-import { useState, useMemo } from "react";
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pediatric NICU/Ward Calculator</title>
+    <style>
+        :root {
+            --bg: #f4f6f8;
+            --card: #ffffff;
+            --primary: #2c3e50;
+            --secondary: #e9ecef;
+            --accent: #e74c3c;
+            --success: #27ae60;
+            --info: #2980b9;
+            --purple: #8e44ad;
+            --text: #333;
+            --text-light: #6c757d;
+            --border: #dee2e6;
+        }
+        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { margin: 0; background-color: var(--bg); color: var(--text); display: flex; justify-content: center; }
+        
+        .app-container { width: 100%; max-width: 500px; height: 100vh; background: var(--bg); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 0 20px rgba(0,0,0,0.1); }
+        .header { background: var(--primary); color: white; padding: 15px 20px; text-align: center; font-size: 1.2rem; font-weight: bold; }
+        
+        .weight-bar { background: var(--card); padding: 15px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; z-index: 10; }
+        .weight-bar label { font-weight: 600; font-size: 1.1rem; }
+        .weight-bar input { width: 80px; font-size: 1.2rem; text-align: center; border: 1px solid var(--border); border-radius: 6px; padding: 5px; }
+        
+        .content { flex: 1; overflow-y: auto; padding: 15px; }
+        
+        .card { background: var(--card); border-radius: 12px; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.04); border: 1px solid var(--border); }
+        .card-title { font-size: 1rem; color: var(--primary); font-weight: 600; margin-top: 0; margin-bottom: 15px; border-bottom: 1px solid var(--secondary); padding-bottom: 8px; }
+        
+        .form-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .form-row label { font-size: 0.95rem; color: var(--text-light); flex: 1; font-weight: 500;}
+        .form-row .input-group { display: flex; align-items: center; justify-content: flex-end; flex: 1; }
+        .form-row input, .form-row select { width: 90px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; text-align: right; font-size: 1rem; }
+        .form-row select { width: 100%; text-align: left; font-weight: bold; color: var(--primary); }
+        .unit { margin-left: 8px; font-size: 0.85rem; color: var(--text-light); width: 60px; }
 
-/* ═══════════════════════════════════════════════════════════════
-   INFUSION DRUG DATA
-═══════════════════════════════════════════════════════════════ */
-const INFUSION_DRUGS = [
-  {
-    id:"adrenaline", name:"Adrenaline", alias:"Epinephrine", cat:"Vasopressor",
-    type:"mcg/kg/min", conc:1, concLabel:"1 mg/ml", concUnit:"mg/ml",
-    dose:0.1, min:0.01, max:1.0, step:0.01,
-    color:"#f87171", bgColor:"rgba(248,113,113,0.1)",
-    indication:"Septic shock, cardiac arrest, anaphylaxis",
-    notes:"Central line preferred. Titrate 0.01–0.05 mcg/kg/min increments. Peripheral only in emergency.",
-    preDilution: null,
-  },
-  {
-    id:"noradrenaline", name:"Noradrenaline", alias:"Norepinephrine", cat:"Vasopressor",
-    type:"mcg/kg/min", conc:1, concLabel:"1 mg/ml", concUnit:"mg/ml",
-    dose:0.05, min:0.01, max:2.0, step:0.01,
-    color:"#fb923c", bgColor:"rgba(251,146,60,0.1)",
-    indication:"Vasodilatory/septic shock, warm shock",
-    notes:"First-line in septic shock. Requires central venous access. Peripheral short-term only.",
-    preDilution: null,
-  },
-  {
-    id:"dopamine", name:"Dopamine", alias:"", cat:"Inotrope/Vasopressor",
-    type:"mcg/kg/min", conc:40, concLabel:"40 mg/ml", concUnit:"mg/ml",
-    dose:5, min:2, max:20, step:0.5,
-    color:"#fbbf24", bgColor:"rgba(251,191,36,0.1)",
-    indication:"Cardiogenic shock, hemodynamic instability",
-    notes:"2–5 mcg: dopaminergic (renal). 5–10: beta-1 inotropic. >10: alpha vasopressor.",
-    preDilution: null,
-  },
-  {
-    id:"dobutamine", name:"Dobutamine", alias:"", cat:"Inotrope",
-    type:"mcg/kg/min", conc:12.5, concLabel:"12.5 mg/ml", concUnit:"mg/ml",
-    dose:5, min:2, max:20, step:0.5,
-    color:"#a3e635", bgColor:"rgba(163,230,53,0.1)",
-    indication:"Cardiogenic shock, low cardiac output states",
-    notes:"Positive inotrope. Tachycardia risk. Often combined with noradrenaline.",
-    preDilution: null,
-  },
-  {
-    id:"milrinone", name:"Milrinone", alias:"", cat:"Inotrope/Vasodilator",
-    type:"mcg/kg/min", conc:1, concLabel:"1 mg/ml", concUnit:"mg/ml",
-    dose:0.375, min:0.25, max:0.75, step:0.025,
-    color:"#34d399", bgColor:"rgba(52,211,153,0.1)",
-    indication:"Low cardiac output, PAH, post-cardiac surgery",
-    notes:"PDE-3 inhibitor. Loading: 50 mcg/kg IV over 30–60 min (optional). Reduce dose in renal failure.",
-    preDilution: null,
-  },
-  {
-    id:"fentanyl", name:"Fentanyl", alias:"", cat:"Analgesic/Sedative",
-    type:"mcg/kg/hr", conc:50, concLabel:"50 mcg/ml", concUnit:"mcg/ml",
-    dose:1, min:0.5, max:5, step:0.5,
-    color:"#818cf8", bgColor:"rgba(129,140,248,0.1)",
-    indication:"Analgesia, sedation, ventilated patients",
-    notes:"Opioid. Have naloxone available. Rigid chest syndrome at high/rapid doses.",
-    preDilution: null,
-  },
-  {
-    id:"ketamine", name:"Ketamine", alias:"", cat:"Analgesic/Sedative",
-    type:"mg/kg/hr", conc:10, concLabel:"10 mg/ml", concUnit:"mg/ml",
-    dose:0.5, min:0.1, max:2, step:0.1,
-    color:"#c084fc", bgColor:"rgba(192,132,252,0.1)",
-    indication:"Procedural sedation, pain, bronchospasm",
-    notes:"Dissociative anesthetic. Preserves airway reflexes. Add midazolam to prevent emergence phenomena.",
-    preDilution:"Dilute vial to 10 mg/ml: Take 2 ml of 50 mg/ml + 8 ml NS = 10 ml at 10 mg/ml",
-  },
-  {
-    id:"furosemide", name:"Furosemide", alias:"Lasix", cat:"Diuretic",
-    type:"mg/kg/hr", conc:10, concLabel:"10 mg/ml", concUnit:"mg/ml",
-    dose:0.1, min:0.05, max:0.4, step:0.05,
-    color:"#2dd4bf", bgColor:"rgba(45,212,191,0.1)",
-    indication:"Fluid overload, acute pulmonary edema, oliguric states",
-    notes:"Loop diuretic. Monitor electrolytes. Ototoxicity at high rates. Max single dose 6 mg/kg.",
-    preDilution: null,
-  },
-  {
-    id:"sildenafil", name:"Sildenafil", alias:"", cat:"Pulm. Vasodilator",
-    type:"mg/kg/hr", conc:0.8, concLabel:"0.8 mg/ml", concUnit:"mg/ml",
-    dose:0.07, min:0.03, max:0.1, step:0.01,
-    color:"#38bdf8", bgColor:"rgba(56,189,248,0.1)",
-    indication:"PPHN, pulmonary arterial hypertension",
-    notes:"PDE-5 inhibitor. Monitor systemic BP closely. Oral route preferred for maintenance therapy.",
-    preDilution: null,
-  },
-  {
-    id:"midazolam", name:"Midazolam", alias:"", cat:"Sedative",
-    type:"mg/kg/hr", conc:1, concLabel:"1 mg/ml", concUnit:"mg/ml",
-    dose:0.1, min:0.05, max:0.4, step:0.05,
-    color:"#e879f9", bgColor:"rgba(232,121,249,0.1)",
-    indication:"Sedation, seizure management, procedural sedation",
-    notes:"Benzodiazepine. Have flumazenil available. Tolerance and accumulation with prolonged use.",
-    preDilution:"Dilute to 1 mg/ml: Take 1 ml of 5 mg/ml + 4 ml NS = 5 ml at 1 mg/ml (prepare fresh)",
-  },
-  {
-    id:"labetalol", name:"Labetalol", alias:"", cat:"Antihypertensive",
-    type:"mg/kg/hr", conc:5, concLabel:"5 mg/ml", concUnit:"mg/ml",
-    dose:0.5, min:0.25, max:3, step:0.25,
-    color:"#fb7185", bgColor:"rgba(251,113,133,0.1)",
-    indication:"Hypertensive emergency, post-coarctation surgery",
-    notes:"Alpha + beta blocker. Contraindicated in asthma, bradycardia, decompensated HF, hypoglycemia.",
-    preDilution: null,
-  },
-  {
-    id:"insulin", name:"Insulin (Regular)", alias:"", cat:"Metabolic",
-    type:"units/kg/hr", conc:1, concLabel:"1 unit/ml (working solution)", concUnit:"units/ml",
-    dose:0.05, min:0.01, max:0.1, step:0.01,
-    color:"#fcd34d", bgColor:"rgba(252,211,77,0.1)",
-    indication:"Hyperglycemia, DKA, hyperkalemia",
-    notes:"⚠️ ALWAYS run dextrose simultaneously. Monitor BGL hourly. IV Regular insulin ONLY.",
-    preDilution:"Prepare 1 unit/ml: Take 1 ml Insulin (40 u/ml) + 39 ml NS = 40 ml at 1 unit/ml. Use this working solution.",
-  },
-];
+        .slider-container { margin: 15px 0; background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid var(--border); }
+        input[type="range"] { width: 100%; margin: 10px 0; }
+        .dose-readout { text-align: center; font-size: 1.4rem; font-weight: bold; color: var(--primary); }
+        
+        .recipe-box { background: #e8f8f5; border: 2px solid var(--success); border-radius: 10px; padding: 15px; margin-top: 15px; }
+        .recipe-box.blue { background: #ebf5fb; border-color: var(--info); }
+        .recipe-box.purple { background: #f5eef8; border-color: var(--purple); }
+        
+        .recipe-header { text-align: center; font-weight: bold; margin-bottom: 10px; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 1px; }
+        .recipe-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 1.1rem; align-items: center; }
+        .recipe-val { font-weight: bold; font-size: 1.3rem; color: var(--primary); }
+        .recipe-total { border-top: 2px dashed var(--success); padding-top: 10px; margin-top: 5px; font-weight: bold; }
+        
+        .recipe-box.blue .recipe-total { border-top-color: var(--info); }
+        .recipe-box.purple .recipe-total { border-top-color: var(--purple); }
+        
+        .instruction { background: var(--primary); color: white; text-align: center; padding: 12px; border-radius: 8px; margin-top: 15px; font-weight: bold; font-size: 1.1rem; }
+        .error-text { background: #fadbd8; color: #c0392b; padding: 10px; border-radius: 6px; text-align: center; font-weight: bold; display: none; margin-top: 15px; }
 
-/* ═══════════════════════════════════════════════════════════════
-   CALCULATION ENGINE
-═══════════════════════════════════════════════════════════════ */
-function calcDilution(drug, weight, dose, totalVol) {
-  if (!weight || weight <= 0 || !dose || dose <= 0) return null;
-  let drugVolMl = 0;
-  switch (drug.type) {
-    case "mcg/kg/min":
-      drugVolMl = (dose * weight * 60 * totalVol) / (1000 * drug.conc);
-      break;
-    case "mcg/kg/hr":
-      drugVolMl = (dose * weight * totalVol) / drug.conc;
-      break;
-    case "mg/kg/hr":
-      drugVolMl = (dose * weight * totalVol) / drug.conc;
-      break;
-    case "units/kg/hr":
-      drugVolMl = (dose * weight * totalVol) / drug.conc;
-      break;
-    default:
-      return null;
-  }
-  const nsVolMl = totalVol - drugVolMl;
-  if (nsVolMl < 0) {
-    return { error: `Drug vol (${drugVolMl.toFixed(2)} ml) > total ${totalVol} ml. ↓ dose or use larger volume.` };
-  }
-  const rates = [0.5, 1, 1.5, 2, 3, 4, 5];
-  const rateTable = rates.map(r => ({
-    rate: r,
-    deliveredDose: parseFloat((dose * r).toFixed(4)),
-    isTarget: r === 1,
-  }));
-  return {
-    drugVolMl: parseFloat(drugVolMl.toFixed(3)),
-    nsVolMl: parseFloat(nsVolMl.toFixed(3)),
-    totalVol,
-    rateTable,
-  };
-}
+        .search-bar { width: 100%; padding: 12px; border: 2px solid var(--primary); border-radius: 8px; font-size: 1rem; margin-bottom: 15px; position: sticky; top: 0; z-index: 100; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .drug-item { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 15px; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        .drug-name { font-weight: bold; color: var(--primary); font-size: 1.15rem; margin-bottom: 8px; border-bottom: 1px solid var(--secondary); padding-bottom: 5px; display: flex; justify-content: space-between; align-items: center;}
+        .drug-cat { font-size: 0.75rem; background: var(--secondary); padding: 2px 6px; border-radius: 4px; color: var(--text-light); }
+        .drug-dose { font-size: 0.95rem; color: var(--text); margin-bottom: 6px; line-height: 1.5; }
+        .drug-dose strong { color: #2c3e50; }
+        .drug-notes { font-size: 0.85rem; color: var(--text-light); font-style: italic; background: #f8f9fa; padding: 8px; border-radius: 4px; margin-top: 8px; border-left: 3px solid var(--info); }
+        .cns-alert { color: #c0392b; font-weight: bold; }
 
-function calcGIR(targetGIR, weight, dexConc, glucoseVol, additionalFluid) {
-  const totalVol = 50;
-  if (glucoseVol <= 0) return { error: "Enter glucose volume > 0" };
-  if (weight <= 0) return { error: "Enter patient weight" };
-  const nsVol = totalVol - glucoseVol - additionalFluid;
-  if (nsVol < 0) return { error: `Total exceeds 50 ml. Reduce glucose vol (${glucoseVol}) or additional fluid (${additionalFluid}).` };
-  const finalConc = (glucoseVol * dexConc) / totalVol;
-  let rate = 0;
-  if (targetGIR > 0 && finalConc > 0) {
-    rate = (targetGIR * weight * 6) / finalConc;
-  }
-  const actualGIR = weight > 0 && finalConc > 0 && rate > 0 ? parseFloat(((finalConc * rate) / (weight * 6)).toFixed(2)) : 0;
-  // What GIR at various rates
-  const girAtRates = [1, 2, 3, 4, 5, 6, 8, 10].map(r => ({
-    rate: r,
-    gir: parseFloat(((finalConc * r) / (weight * 6)).toFixed(2)),
-  }));
-  return {
-    nsVol: parseFloat(nsVol.toFixed(2)),
-    finalConc: parseFloat(finalConc.toFixed(2)),
-    rate: parseFloat(rate.toFixed(2)),
-    actualGIR,
-    totalVol,
-    glucoseVol: parseFloat(glucoseVol.toFixed(2)),
-    additionalFluid: parseFloat(additionalFluid.toFixed(2)),
-    girAtRates,
-  };
-}
+        .btn-download { display: block; width: 100%; background: var(--text-light); color: white; text-align: center; padding: 12px; border: none; border-radius: 8px; font-weight: bold; margin-top: 10px; cursor: pointer; }
+        .tabs { display: flex; background: var(--card); border-top: 1px solid var(--border); box-shadow: 0 -2px 10px rgba(0,0,0,0.05); z-index: 10;}
+        .tab { flex: 1; padding: 12px 2px; text-align: center; font-weight: 600; color: var(--text-light); cursor: pointer; border-bottom: 3px solid transparent; font-size: 0.85rem; }
+        .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .highlight-text { color: var(--info); font-weight: bold; font-size: 1.2rem; }
+    </style>
+</head>
+<body>
 
-/* ═══════════════════════════════════════════════════════════════
-   DRUG REFERENCE DATA (Harriet Lane)
-═══════════════════════════════════════════════════════════════ */
-const DRUG_REF = [
-  // ANTIBIOTICS
-  {name:"Amoxicillin",alias:"",cat:"Antibiotic",route:"PO",
-   dose:"25–50 mg/kg/day ÷ q8–12h",maxDose:"500 mg/dose",
-   indication:"Otitis media, AOM, pneumonia, UTI, strep throat",
-   notes:"Double dose (80–90 mg/kg/day) for ARI/suspected resistant organisms"},
-  {name:"Ampicillin",alias:"",cat:"Antibiotic",route:"IV/PO",
-   dose:"Neonates: 50–100 mg/kg/day ÷ q6–12h; Children: 100–200 mg/kg/day ÷ q6h",maxDose:"12 g/day",
-   indication:"Meningitis, sepsis, UTI, listeria",
-   notes:"Adjust in renal impairment; add gentamicin for synergy in enterococcal infections"},
-  {name:"Ceftriaxone",alias:"Rocephin",cat:"Antibiotic",route:"IV/IM",
-   dose:"50–100 mg/kg/day ÷ q24h (meningitis: 100 mg/kg/day ÷ q12h)",maxDose:"4 g/day",
-   indication:"Meningitis, sepsis, pneumonia, pyelonephritis, typhoid",
-   notes:"⚠️ DO NOT use in neonates <28 days (bilirubin displacement). Monitor for biliary sludge."},
-  {name:"Cefotaxime",alias:"",cat:"Antibiotic",route:"IV",
-   dose:"100–200 mg/kg/day ÷ q6–8h (neonates: 100–150 mg/kg/day ÷ q8–12h)",maxDose:"12 g/day",
-   indication:"Neonatal meningitis/sepsis, gram-negative meningitis",
-   notes:"Preferred over ceftriaxone in neonates. Adjust for renal function."},
-  {name:"Vancomycin",alias:"",cat:"Antibiotic",route:"IV",
-   dose:"40–60 mg/kg/day ÷ q6h; Neonates: 15 mg/kg q8–24h (based on GA)",maxDose:"4 g/day",
-   indication:"MRSA, resistant gram-positive infections, meningitis (add to 3rd gen cephalosporin)",
-   notes:"Target trough 10–20 mcg/ml (AUC/MIC 400–600). Infuse over ≥60 min. Monitor renal function."},
-  {name:"Gentamicin",alias:"",cat:"Antibiotic",route:"IV/IM",
-   dose:"Neonates (once daily): 4–5 mg/kg q24–48h based on GA; Children: 7.5 mg/kg/day ÷ q8h or 5–7 mg/kg q24h",maxDose:"Variable",
-   indication:"Gram-negative sepsis, UTI, synergy for enterococcal/staphylococcal infections",
-   notes:"Monitor trough <2 mcg/ml and peak 5–10 mcg/ml. Nephrotoxic and ototoxic."},
-  {name:"Meropenem",alias:"",cat:"Antibiotic",route:"IV",
-   dose:"60 mg/kg/day ÷ q8h; Meningitis: 120 mg/kg/day ÷ q8h",maxDose:"6 g/day",
-   indication:"Severe sepsis, nosocomial infections, meningitis, febrile neutropenia, MDR organisms",
-   notes:"Broad spectrum. Seizure threshold lowered. Monitor closely in renal impairment."},
-  {name:"Piperacillin-Tazobactam",alias:"Pip-Tazo",cat:"Antibiotic",route:"IV",
-   dose:"240–300 mg/kg/day (piperacillin component) ÷ q6–8h",maxDose:"16 g/day piperacillin",
-   indication:"Intra-abdominal infections, HAP, febrile neutropenia, polymicrobial infections",
-   notes:""},
-  {name:"Metronidazole",alias:"Flagyl",cat:"Antibiotic",route:"IV/PO",
-   dose:"22.5–30 mg/kg/day ÷ q8h; Neonates: 15 mg/kg loading then 7.5 mg/kg q12h",maxDose:"4 g/day",
-   indication:"Anaerobic infections, C. difficile, amebiasis, Giardia, NEC prophylaxis",
-   notes:"Avoid alcohol. May prolong PT. Metallic taste."},
-  {name:"Azithromycin",alias:"Z-pack",cat:"Antibiotic",route:"PO/IV",
-   dose:"Pneumonia: 10 mg/kg day 1, then 5 mg/kg/day ×4 days; Pertussis: 10 mg/kg/day ×5 days",maxDose:"500 mg/day",
-   indication:"Atypical pneumonia (Mycoplasma, Chlamydia), pertussis, MAC prophylaxis",
-   notes:"Prolongs QT interval. Drug interactions (terfenadine, warfarin)."},
-  {name:"Cloxacillin",alias:"",cat:"Antibiotic",route:"IV/PO",
-   dose:"50 mg/kg/day ÷ q6h (mild); 100–200 mg/kg/day ÷ q4–6h (severe)",maxDose:"12 g/day",
-   indication:"MSSA infections, osteomyelitis, cellulitis, septic arthritis",
-   notes:"Give on empty stomach (PO). Penicillinase-resistant."},
-  {name:"Cotrimoxazole (TMP-SMX)",alias:"Bactrim",cat:"Antibiotic",route:"PO/IV",
-   dose:"UTI: 6–8 mg TMP/kg/day ÷ q12h; PCP tx: 15–20 mg TMP/kg/day ÷ q6–8h; PCP ppx: 5 mg TMP/kg/day 3×/week",maxDose:"320 mg TMP/day",
-   indication:"UTI, PCP, otitis media, traveller's diarrhoea, salmonella",
-   notes:"Avoid <2 months (kernicterus), G6PD deficiency caution. Check G6PD in relevant populations."},
-  {name:"Acyclovir",alias:"",cat:"Antiviral",route:"IV/PO",
-   dose:"HSV encephalitis: 60 mg/kg/day ÷ q8h IV; Neonatal HSV: 60 mg/kg/day ÷ q8h; Chickenpox (immunocompromised): 1500 mg/m²/day ÷ q8h",maxDose:"30 mg/kg/dose",
-   indication:"HSV encephalitis, neonatal HSV, VZV in immunocompromised, herpes zoster",
-   notes:"Adequate hydration essential (crystalluria). Monitor creatinine. Duration: HSV encephalitis 21 days."},
-  {name:"Fluconazole",alias:"Diflucan",cat:"Antifungal",route:"IV/PO",
-   dose:"Mucosal candidiasis: 6 mg/kg loading then 3 mg/kg/day; Invasive: 12 mg/kg loading then 6–12 mg/kg/day",maxDose:"800 mg/day",
-   indication:"Candidiasis (mucosal and invasive), cryptococcal meningitis, prophylaxis in VLBW",
-   notes:"Adjust in renal impairment. Drug interactions (warfarin, phenytoin, cyclosporine)."},
-  // ANTICONVULSANTS
-  {name:"Phenobarbitone",alias:"Phenobarbital",cat:"Anticonvulsant",route:"IV/PO",
-   dose:"Loading: 20 mg/kg IV (can repeat 10 mg/kg ×2); Maintenance: 3–5 mg/kg/day ÷ q12–24h",maxDose:"30 mg/kg total load",
-   indication:"Neonatal seizures (first-line), status epilepticus, febrile seizures (chronic use rarely)",
-   notes:"Respiratory depression risk with loading. Therapeutic level: 15–40 mcg/ml. Enzyme inducer."},
-  {name:"Phenytoin",alias:"Dilantin",cat:"Anticonvulsant",route:"IV/PO",
-   dose:"Loading: 15–20 mg/kg IV (max rate 1 mg/kg/min, max 50 mg/min); Maintenance: 5–8 mg/kg/day ÷ q12h",maxDose:"1 g loading",
-   indication:"Generalised tonic-clonic, status epilepticus, focal seizures",
-   notes:"Monitor ECG during loading (bradycardia, hypotension). Therapeutic level: 10–20 mcg/ml. Avoid extravasation (tissue necrosis)."},
-  {name:"Levetiracetam",alias:"Keppra",cat:"Anticonvulsant",route:"IV/PO",
-   dose:"Loading: 20–60 mg/kg IV; Maintenance: 20–60 mg/kg/day ÷ q12h",maxDose:"3 g/day (adults), titrate up",
-   indication:"Focal and generalised seizures, status epilepticus, Myoclonic epilepsy",
-   notes:"Preferred in many centres for fewer drug interactions. Adjust in renal impairment. Behavioural side effects."},
-  {name:"Valproate",alias:"Sodium valproate",cat:"Anticonvulsant",route:"IV/PO",
-   dose:"Loading: 20–40 mg/kg IV; Maintenance: 20–60 mg/kg/day ÷ q8–12h",maxDose:"60 mg/kg/day",
-   indication:"Absence, myoclonic, generalised, Lennox-Gastaut, epileptic spasms",
-   notes:"⚠️ Avoid in liver disease, urea cycle disorders. Therapeutic: 50–100 mcg/ml. Risk of hepatotoxicity in <2yr."},
-  {name:"Diazepam",alias:"Valium",cat:"Anticonvulsant",route:"IV/Rectal",
-   dose:"IV: 0.2–0.5 mg/kg slow push; Rectal: 0.5 mg/kg",maxDose:"IV: 10 mg; Rectal: 0.5 mg/kg",
-   indication:"Acute seizures, febrile seizures, status epilepticus (first dose)",
-   notes:"Respiratory depression—have BVM ready. Short-acting (20–30 min AED effect). Monitor SpO2."},
-  {name:"Midazolam (seizure)",alias:"Versed",cat:"Anticonvulsant",route:"IV/IN/Buccal/IM",
-   dose:"IV: 0.1–0.2 mg/kg; Intranasal: 0.2 mg/kg; Buccal: 0.5 mg/kg; IM: 0.2 mg/kg",maxDose:"10 mg",
-   indication:"Acute seizures, status epilepticus, refractory status",
-   notes:"Intranasal/buccal useful outside hospital. For refractory SE: infusion 0.05–0.4 mg/kg/hr."},
-  // ANALGESICS
-  {name:"Paracetamol",alias:"Acetaminophen",cat:"Analgesic/Antipyretic",route:"PO/IV/PR",
-   dose:"10–15 mg/kg/dose q4–6h (PO/PR); IV: 15 mg/kg q6h (>10 kg); Neonates: 10–12 mg/kg q6–8h",maxDose:"75 mg/kg/day, max 4 g/day",
-   indication:"Mild-moderate pain, fever, post-operative analgesia",
-   notes:"Avoid in hepatic impairment. Reduce dose in neonates. IV paracetamol more expensive but reliable."},
-  {name:"Ibuprofen",alias:"",cat:"Analgesic/NSAID",route:"PO",
-   dose:"5–10 mg/kg/dose q6–8h",maxDose:"40 mg/kg/day; 2.4 g/day",
-   indication:"Mild-moderate pain, fever, inflammatory conditions, PDA closure (oral in term neonates)",
-   notes:"Avoid <6 months, renal impairment, dehydration, GI pathology, dengue, asthma (some patients)."},
-  {name:"Morphine",alias:"",cat:"Opioid Analgesic",route:"IV/PO",
-   dose:"IV bolus: 0.05–0.1 mg/kg q2–4h; IV infusion: 0.01–0.04 mg/kg/hr; Neonates: 0.02–0.05 mg/kg q4–8h",maxDose:"0.1 mg/kg/dose",
-   indication:"Moderate-severe pain, post-operative, ventilated patients",
-   notes:"Have naloxone available. Monitor SpO2, HR, RR. Histamine release. Constipation."},
-  {name:"Fentanyl (bolus)",alias:"",cat:"Opioid Analgesic",route:"IV/IN/IM",
-   dose:"IV: 1–2 mcg/kg over 3–5 min; Intranasal: 1.5 mcg/kg; IM: 2 mcg/kg",maxDose:"50 mcg/dose",
-   indication:"Procedural analgesia, severe pain, RSI, MRI sedation",
-   notes:"Short-acting. Rigid chest syndrome (esp. rapid IV push). Intranasal useful for procedures."},
-  {name:"Tramadol",alias:"",cat:"Analgesic",route:"IV/PO",
-   dose:"1–2 mg/kg/dose q4–6h",maxDose:"8 mg/kg/day; 400 mg/day",
-   indication:"Moderate pain",
-   notes:"⚠️ FDA warning: not recommended <12 years post-tonsillectomy/adenoidectomy. CYP2D6 ultra-metabolisers risk."},
-  {name:"Ketorolac",alias:"Toradol",cat:"Analgesic/NSAID",route:"IV/IM",
-   dose:"0.5 mg/kg q6h",maxDose:"15–30 mg/dose; 5-day max course",
-   indication:"Moderate pain, post-operative, renal colic",
-   notes:"Avoid in renal impairment, coagulopathy, GI disease. Short course only (≤5 days)."},
-  // CARDIOVASCULAR
-  {name:"Adenosine",alias:"",cat:"Antiarrhythmic",route:"Rapid IV push",
-   dose:"0.1 mg/kg rapid IV push; may repeat 0.2 mg/kg",maxDose:"6 mg first; 12 mg subsequent",
-   indication:"SVT (AV nodal re-entrant tachycardia), AVNRT",
-   notes:"Give as RAPID push, immediately followed by fast NS flush. Defibrillator at bedside. ECG monitoring."},
-  {name:"Amiodarone",alias:"Cordarone",cat:"Antiarrhythmic",route:"IV",
-   dose:"Pulseless VF/VT: 5 mg/kg rapid IV; SVT: 5 mg/kg over 20–60 min; Maintenance: 5–10 mg/kg/day",maxDose:"15 mg/kg/day",
-   indication:"VF, pulseless VT, SVT refractory to adenosine, junctional tachycardia post-cardiac surgery",
-   notes:"Photosensitivity. Monitor TFT, LFT, pulmonary function. Prolongs QT. Peripheral phlebitis."},
-  {name:"Atropine",alias:"",cat:"Anticholinergic",route:"IV/IM/ET",
-   dose:"0.02 mg/kg IV; minimum 0.1 mg",maxDose:"0.5 mg child; 1 mg adolescent",
-   indication:"Bradycardia (haemodynamically significant), vagally-mediated, pre-intubation, organophosphate",
-   notes:"⚠️ Minimum 0.1 mg to avoid paradoxical bradycardia. ET dose: 0.04–0.06 mg/kg."},
-  {name:"Digoxin",alias:"Lanoxin",cat:"Cardiac Glycoside",route:"IV/PO",
-   dose:"Premature: TDD 15 mcg/kg; Full term/infant: TDD 20–30 mcg/kg; >2yr: TDD 25–35 mcg/kg (give ½ then ¼ then ¼ q8h)",maxDose:"Per protocol",
-   indication:"Congestive heart failure, SVT rate control, atrial flutter",
-   notes:"Narrow TI. Therapeutic level: 0.8–2 ng/ml. Monitor ECG, electrolytes (↓K, ↓Mg toxicity). Toxicity: nausea, vomiting, arrhythmias."},
-  {name:"Captopril",alias:"",cat:"ACE Inhibitor",route:"PO",
-   dose:"Neonates: 0.01–0.05 mg/kg/dose q8–24h; Infants: 0.1–0.5 mg/kg/dose q8h; Children: 0.5–1 mg/kg/dose q8h",maxDose:"6 mg/kg/day",
-   indication:"Heart failure, hypertension, renal protection, dilated cardiomyopathy",
-   notes:"Monitor BP (first-dose hypotension), K, creatinine. Avoid bilateral RAS. Cough (may need switch to ARB)."},
-  {name:"Hydralazine",alias:"",cat:"Vasodilator",route:"IV/PO",
-   dose:"IV: 0.1–0.5 mg/kg q4–6h; PO: 0.75–1 mg/kg/day ÷ q6h",maxDose:"IV: 0.5 mg/kg/dose; PO: 200 mg/day",
-   indication:"Hypertensive emergency, heart failure, after-load reduction",
-   notes:"Lupus-like syndrome with prolonged use. Reflex tachycardia. Often combined with beta blocker."},
-  {name:"Nifedipine",alias:"",cat:"Calcium Channel Blocker",route:"PO/SL",
-   dose:"0.25–0.5 mg/kg/dose q4–6h (SR: 0.25–0.5 mg/kg/dose q12h)",maxDose:"3 mg/kg/day; 120 mg/day",
-   indication:"Hypertension, Raynaud's, hypertrophic cardiomyopathy",
-   notes:"Avoid immediate-release formulation for routine hypertension. SL use: bite and swallow (not proven superior)."},
-  // RESPIRATORY
-  {name:"Salbutamol",alias:"Albuterol, Ventolin",cat:"Bronchodilator",route:"Nebuliser/MDI/IV",
-   dose:"Nebuliser: 0.15 mg/kg (min 2.5 mg, max 5 mg) q20 min ×3; MDI: 2–4 puffs q20 min; IV infusion: 1–5 mcg/kg/min",maxDose:"10 mg/dose nebuliser",
-   indication:"Acute bronchospasm, asthma exacerbation, bronchiolitis (limited evidence), hyperkalaemia",
-   notes:"Monitor HR and K+ (hypokalaemia risk). Continuous nebulisation in severe asthma (0.5 mg/kg/hr)."},
-  {name:"Ipratropium",alias:"Atrovent",cat:"Bronchodilator",route:"Nebuliser",
-   dose:"<5 years: 250 mcg/dose; ≥5 years: 500 mcg/dose q20 min ×3 (only add to first 3 salbutamol doses in ED)",maxDose:"500 mcg/dose",
-   indication:"Severe acute asthma (add-on to salbutamol), COPD",
-   notes:"Anticholinergic. Add to salbutamol nebulisation. Only effective in first few doses in acute asthma."},
-  {name:"Dexamethasone",alias:"",cat:"Corticosteroid",route:"IV/IM/PO",
-   dose:"Croup: 0.6 mg/kg single dose; Asthma/wheezing: 0.6 mg/day ×1–2 days; Meningitis: 0.15 mg/kg q6h ×4 days; Raised ICP: 0.25–0.5 mg/kg q6h; Extubation stridor: 0.5 mg/kg q6h ×3 doses",maxDose:"10 mg (croup)",
-   indication:"Croup, asthma, bacterial meningitis, raised ICP, adrenal insufficiency, airway oedema",
-   notes:"Give dexamethasone before or with first antibiotic dose in bacterial meningitis (Hib, pneumococcal)."},
-  {name:"Prednisolone",alias:"",cat:"Corticosteroid",route:"PO",
-   dose:"1–2 mg/kg/day ÷ q12–24h",maxDose:"60 mg/day",
-   indication:"Asthma, nephrotic syndrome, IBD, JIA, immune thrombocytopaenia",
-   notes:"Give with food. Adrenal suppression with prolonged use. Stepdown/taper for courses >1–2 weeks."},
-  {name:"Magnesium Sulphate",alias:"MgSO4",cat:"Bronchodilator/Anticonvulsant",route:"IV",
-   dose:"Asthma: 25–75 mg/kg over 20 min; Seizure/eclampsia: 50 mg/kg loading then 25–50 mg/kg/hr; Hypomagnesaemia: 25–50 mg/kg",maxDose:"2 g/dose asthma",
-   indication:"Severe refractory asthma, hypomagnesaemia, torsades de pointes, neonatal seizures (adjunct), eclampsia",
-   notes:"Monitor serum Mg (toxic >4 mmol/L: hypotension, respiratory depression). Calcium gluconate is antidote."},
-  // GI
-  {name:"Ondansetron",alias:"Zofran",cat:"Antiemetic",route:"IV/PO",
-   dose:"0.1–0.15 mg/kg q8h",maxDose:"8 mg/dose",
-   indication:"Nausea and vomiting, chemotherapy-induced nausea",
-   notes:"⚠️ Avoid in QT prolongation, routine use in viral gastroenteritis <2yr (risk of missed intussusception)."},
-  {name:"Omeprazole",alias:"Prilosec",cat:"PPI",route:"PO/IV",
-   dose:"<10 kg: 5 mg/day; 10–20 kg: 10 mg/day; >20 kg: 20 mg/day",maxDose:"40 mg/day",
-   indication:"GERD, peptic ulcer disease, stress ulcer prophylaxis in ICU, H. pylori (triple therapy)",
-   notes:"Take 30 min before food. IV dose: 0.5–1.5 mg/kg/day. Monitor Mg with long-term use."},
-  {name:"Domperidone",alias:"Motilium",cat:"Prokinetic",route:"PO",
-   dose:"0.2–0.4 mg/kg/dose TID–QID before meals",maxDose:"2.4 mg/kg/day; 30 mg/day",
-   indication:"GERD, gastroparesis, chemotherapy nausea",
-   notes:"Avoid in QT prolongation, cardiac disease. Do not use with ketoconazole. Max 1 week ideally."},
-  {name:"Lactulose",alias:"",cat:"Laxative",route:"PO",
-   dose:"<1 yr: 2.5 ml BD; 1–5 yr: 5 ml TDS; 5–10 yr: 10 ml TDS; >10 yr: 15 ml TDS",maxDose:"Titrate to response",
-   indication:"Constipation, hepatic encephalopathy",
-   notes:"Adjust dose to achieve 2–3 soft stools/day. Flatulence and bloating initially."},
-  // ELECTROLYTES/FLUIDS
-  {name:"Normal Saline (0.9% NaCl)",alias:"NS, NSS",cat:"IV Fluid",route:"IV",
-   dose:"Fluid bolus: 10–20 ml/kg over 15–30 min; repeat ×2–3 in sepsis/shock",maxDose:"60 ml/kg initial resus",
-   indication:"Volume resuscitation, hypovolaemia, sodium replacement",
-   notes:"Balanced crystalloid (Ringer's lactate) preferred in many protocols to reduce hyperchloraemic acidosis."},
-  {name:"Potassium Chloride (KCl)",alias:"",cat:"Electrolyte",route:"IV (DILUTED ONLY)",
-   dose:"0.5–1 mEq/kg/dose over 1 hour; maintenance: 2–3 mEq/kg/day",maxDose:"1 mEq/kg/dose; max rate 0.5 mEq/kg/hr",
-   indication:"Hypokalaemia (K+ <3.5 mEq/L)",
-   notes:"⚠️ NEVER give undiluted or as IV push—cardiac arrest risk. Max peripheral concentration 40 mEq/L, central 80 mEq/L."},
-  {name:"Calcium Gluconate 10%",alias:"",cat:"Electrolyte",route:"IV (slow)",
-   dose:"Hypocalcaemia: 0.5–1 ml/kg over 5–10 min; Cardiac arrest/hyperK: 0.5–1 ml/kg rapid; Neonates: 1–2 ml/kg",maxDose:"20 ml/dose",
-   indication:"Symptomatic hypocalcaemia, hyperkalemia (cardiac stabilisation), CCB toxicity, hypomagnesaemia",
-   notes:"Monitor ECG. Extravasation causes severe tissue necrosis. Never mix with bicarbonate (precipitates)."},
-  {name:"Sodium Bicarbonate 8.4%",alias:"NaHCO₃",cat:"Electrolyte",route:"IV",
-   dose:"1–2 mEq/kg IV over 5–10 min; Formula: 0.3 × weight × base deficit",maxDose:"1–2 mEq/kg/dose",
-   indication:"Metabolic acidosis (pH <7.1), hyperkalemia, TCA overdose, cardiac arrest",
-   notes:"⚠️ Ensure adequate ventilation (CO₂ generated). 8.4% = 1 mEq/ml. Dilute 1:1 with dextrose for neonates."},
-  // HAEMATOLOGY
-  {name:"Packed Red Blood Cells (pRBC)",alias:"",cat:"Blood Product",route:"IV",
-   dose:"10–15 ml/kg over 3–4 hours",maxDose:"15 ml/kg per transfusion",
-   indication:"Symptomatic anaemia; Hb <7 g/dl (or <8 in cardiac disease, sepsis in some protocols)",
-   notes:"Volume = 4 × weight × (desired Hb – current Hb) ml. Use irradiated/CMV-neg in immunocompromised."},
-  {name:"Fresh Frozen Plasma (FFP)",alias:"",cat:"Blood Product",route:"IV",
-   dose:"10–15 ml/kg over 30–60 min",maxDose:"15 ml/kg",
-   indication:"Coagulopathy, DIC, factor deficiency, active bleeding with elevated PT/INR, TTP",
-   notes:"ABO-compatible. Thaw time 20–30 min. Transfuse within 4 hours of thawing. TRALI risk."},
-  {name:"Vitamin K₁ (Phytomenadione)",alias:"",cat:"Haemostatic",route:"IV/IM/PO",
-   dose:"Neonatal prophylaxis: 1 mg IM; HDN treatment: 1–2 mg IV slowly; Older: 0.3–1 mg/kg (max 10 mg)",maxDose:"10 mg",
-   indication:"HDN prophylaxis, vitamin K deficiency, warfarin reversal",
-   notes:"⚠️ IV: give slowly (risk anaphylaxis). IM preferred in HDN. Effect in 4–6 hours (IV), 24 hours (PO)."},
-  // NEUROLOGICAL
-  {name:"Mannitol 20%",alias:"",cat:"Osmotic Agent",route:"IV",
-   dose:"0.25–1 g/kg over 15–30 min",maxDose:"1 g/kg/dose",
-   indication:"Raised intracranial pressure, cerebral oedema, acute angle closure glaucoma",
-   notes:"Monitor serum osmolality (<320 mOsm/L), electrolytes, fluid balance. Use in-line filter."},
-  {name:"Hypertonic Saline 3%",alias:"HTS",cat:"Osmotic Agent",route:"IV",
-   dose:"ICP: 2–5 ml/kg over 15–30 min; Symptomatic hyponatraemia: 1–2 ml/kg/hr; Herniation: 5 ml/kg bolus",maxDose:"Per protocol",
-   indication:"Raised ICP, symptomatic hyponatraemia, impending herniation",
-   notes:"Central access preferred for >2% solutions. Sodium correction ≤12 mEq/L/24h (chronic). Monitor serum Na q2–4h."},
-  // NEONATAL SPECIFIC
-  {name:"Caffeine Citrate",alias:"",cat:"Neonatal",route:"IV/PO",
-   dose:"Loading: 20 mg/kg IV over 30 min; Maintenance: 5–10 mg/kg/day OD",maxDose:"Loading 40 mg/kg if needed",
-   indication:"Apnoea of prematurity (first-line), methylxanthine weaning, extubation facilitation",
-   notes:"Therapeutic level: 8–20 mcg/ml. Monitor HR. Note: dose is mg/kg of caffeine CITRATE (= half caffeine base)."},
-  {name:"Surfactant (Beractant/Poractant)",alias:"Survanta/Curosurf",cat:"Neonatal",route:"Intratracheal",
-   dose:"Beractant: 100 mg/kg (4 ml/kg); Poractant: 100–200 mg/kg (1.25–2.5 ml/kg)",maxDose:"Up to 4 doses, q6–12h",
-   indication:"Neonatal RDS, surfactant deficiency, meconium aspiration syndrome",
-   notes:"Administer via ET tube. Position changes during administration. Ensure correct ET tube position before."},
-  {name:"Indomethacin (PDA)",alias:"",cat:"Neonatal",route:"IV",
-   dose:"0.2 mg/kg q12–24h ×3 doses",maxDose:"0.2 mg/kg/dose",
-   indication:"Haemodynamically significant PDA in premature neonates",
-   notes:"⚠️ Contraindicated: NEC, oliguria (<1 ml/kg/hr), thrombocytopenia, creatinine >1.8, IVH Grade III-IV. Hold feeds."},
-  {name:"Prostaglandin E1",alias:"Alprostadil, PGE1",cat:"Neonatal",route:"IV infusion",
-   dose:"0.05–0.1 mcg/kg/min (max 0.4 mcg/kg/min); maintenance often 0.01–0.05 mcg/kg/min",maxDose:"0.4 mcg/kg/min",
-   indication:"Ductal-dependent congenital heart disease (maintaining PDA patency)",
-   notes:"⚠️ Side effects: apnoea (prepare to intubate), fever, hypotension, cortical hyperostosis (chronic). Don't stop abruptly."},
-  // METABOLIC/ENDOCRINE
-  {name:"Hydrocortisone",alias:"",cat:"Corticosteroid",route:"IV/IM",
-   dose:"Stress: 50–100 mg/m²/day ÷ q6–8h; Septic shock (refractory): 2 mg/kg loading then 1 mg/kg q6h; Adrenal crisis: 25–100 mg/m² bolus",maxDose:"100–200 mg/dose",
-   indication:"Adrenal insufficiency, CAH, refractory septic shock, adrenal crisis",
-   notes:"Mineralocorticoid activity (unlike dexamethasone). Monitor glucose, electrolytes, BP."},
-  {name:"Dextrose 10% (D10W)",alias:"",cat:"Metabolic",route:"IV",
-   dose:"Hypoglycaemia bolus: 2 ml/kg IV (= 200 mg/kg); Neonates: 2 ml/kg D10W, follow with maintenance GIR",maxDose:"2 ml/kg bolus (repeated if needed)",
-   indication:"Hypoglycaemia (glucose <45 mg/dl neonates, <60 mg/dl children)",
-   notes:"Check glucose 15–30 min post-treatment. Never use D50 peripherally in neonates."},
-  {name:"Glucagon",alias:"",cat:"Metabolic",route:"IM/SC/IV",
-   dose:"<20 kg: 0.5 mg; ≥20 kg: 1 mg",maxDose:"1 mg",
-   indication:"Severe hypoglycaemia (unable to obtain IV access), beta-blocker toxicity",
-   notes:"Follow with oral glucose when possible. Vomiting common—position patient appropriately. Works via glycogenolysis."},
-  // IMMUNOLOGICAL
-  {name:"IVIG",alias:"Intravenous immunoglobulin",cat:"Immunologic",route:"IV",
-   dose:"Kawasaki: 2 g/kg single dose; ITP: 0.8–1 g/kg single dose (can repeat); Immunodeficiency: 400–600 mg/kg q3–4 weeks; GBS/CIDP: 2 g/kg ÷ 2–5 days",maxDose:"2 g/kg",
-   indication:"Kawasaki disease, ITP, MIS-C, GBS, primary immunodeficiency, neonatal alloimmune thrombocytopenia",
-   notes:"Pre-medicate with paracetamol ± diphenhydramine if previous reactions. Rate-related reactions common."},
-  // SEDATION/PROCEDURAL
-  {name:"Ketamine (procedural bolus)",alias:"",cat:"Sedation",route:"IV/IM",
-   dose:"IV: 1–2 mg/kg slowly over 1 min; IM: 3–5 mg/kg",maxDose:"500 mg IM; 2 mg/kg IV",
-   indication:"Procedural sedation, RSI (hemodynamically unstable), fracture reduction",
-   notes:"Dissociative anesthetic. Preserves airway reflexes and breathing drive. Add midazolam (0.05 mg/kg) to reduce emergence phenomena."},
-  {name:"Propofol",alias:"Diprivan",cat:"Sedation",route:"IV",
-   dose:"Induction: 1–3 mg/kg; Procedure: 2–5 mg/kg/hr infusion",maxDose:"Per procedure",
-   indication:"Procedural sedation (>3 years), anaesthesia induction",
-   notes:"⚠️ PRIS (propofol infusion syndrome) with prolonged use >48h—not for long-term PICU sedation. Pain on injection."},
-  {name:"Naloxone",alias:"Narcan",cat:"Reversal Agent",route:"IV/IM/SC/IN",
-   dose:"Opioid reversal: 0.01 mg/kg q2–3 min; Neonatal resuscitation: 0.1 mg/kg",maxDose:"2 mg/dose",
-   indication:"Opioid overdose/reversal, neonatal respiratory depression (maternal opioids)",
-   notes:"Shorter acting than opioids—may need repeat dosing or infusion. Abrupt reversal in opioid-dependent: acute withdrawal."},
-  {name:"Flumazenil",alias:"Anexate",cat:"Reversal Agent",route:"IV",
-   dose:"0.01 mg/kg over 15 sec; repeat q1 min up to 0.05 mg/kg total",maxDose:"1 mg total",
-   indication:"Benzodiazepine reversal/overdose",
-   notes:"⚠️ May precipitate withdrawal seizures in benzodiazepine-dependent patients. Short duration (30–60 min)—monitor for re-sedation."},
-  {name:"Neostigmine",alias:"",cat:"Reversal Agent",route:"IV",
-   dose:"0.04–0.07 mg/kg with atropine (0.02 mg/kg)",maxDose:"5 mg",
-   indication:"Reversal of non-depolarising neuromuscular blockade",
-   notes:"Always give with atropine to prevent bradycardia. Monitor neuromuscular function (train-of-four)."},
-  // EMERGENCY
-  {name:"Epinephrine (cardiac arrest)",alias:"Adrenaline 1:10,000",cat:"Emergency",route:"IV/IO/ETT",
-   dose:"IV/IO: 0.01 mg/kg (0.1 ml/kg of 1:10,000) q3–5 min; ETT: 0.1 mg/kg (0.1 ml/kg of 1:1,000)",maxDose:"1 mg/dose IV",
-   indication:"Cardiac arrest: asystole, PEA, VF/VT (after defibrillation)",
-   notes:"1:10,000 = 0.1 mg/ml. 1:1,000 = 1 mg/ml (dilute before ETT use). Consider after 3rd shock in shockable rhythm."},
-  {name:"Adrenaline (anaphylaxis)",alias:"",cat:"Emergency",route:"IM",
-   dose:"0.01 mg/kg of 1:1,000 IM (anterolateral thigh); = 0.01 ml/kg",maxDose:"0.5 mg (adult EpiPen 300 mcg)",
-   indication:"Anaphylaxis",
-   notes:"IM into anterolateral thigh (not buttock). Repeat q5–15 min PRN. Follow with IV infusion if needed."},
-  {name:"Adenosine (SVT)",alias:"",cat:"Emergency",route:"Rapid IV",
-   dose:"0.1 mg/kg rapid IV push; repeat 0.2 mg/kg if no response",maxDose:"6 mg first; 12 mg second",
-   indication:"SVT (haemodynamically stable)",
-   notes:"Give as RAPID IV bolus followed immediately by fast NS flush. Use proximal large vein. Record ECG during."},
-  {name:"Calcium Chloride 10%",alias:"",cat:"Emergency",route:"IV",
-   dose:"0.2 ml/kg (= 0.2 mEq/kg) IV over 2–5 min",maxDose:"1 g/dose",
-   indication:"Cardiac arrest with hypocalcaemia/hyperkalemia/hypermagnesaemia/CCB toxicity",
-   notes:"3× more elemental calcium than calcium gluconate. Central access preferred. Extravasation causes necrosis."},
-];
-
-/* ═══════════════════════════════════════════════════════════════
-   SUB-COMPONENTS
-═══════════════════════════════════════════════════════════════ */
-
-function NumInput({ label, value, onChange, min, max, step, unit, placeholder }) {
-  return (
-    <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-      <label style={{ fontSize:10, color:"#64748b", letterSpacing:1, textTransform:"uppercase" }}>{label}</label>
-      <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-        <input
-          type="number" min={min} max={max} step={step}
-          value={value === 0 ? "" : value}
-          placeholder={placeholder || "0"}
-          onChange={e => onChange(parseFloat(e.target.value) || 0)}
-          style={{
-            background:"#1e293b", border:"1px solid #334155", borderRadius:6,
-            color:"#e2e8f0", padding:"7px 10px", fontSize:14, fontFamily:"inherit",
-            width:"100%", outline:"none",
-          }}
-        />
-        {unit && <span style={{ fontSize:11, color:"#64748b", whiteSpace:"nowrap" }}>{unit}</span>}
-      </div>
-    </div>
-  );
-}
-
-function DilutionCard({ drug, weight, dose, totalVol, result }) {
-  const doseUnitLabel = drug.type === "units/kg/hr" ? "units/kg/hr" : drug.type;
-  return (
-    <div style={{
-      background:"#111827", border:"1px solid #1e3a5f", borderRadius:12,
-      overflow:"hidden", flex:1,
-    }}>
-      {/* Card Header */}
-      <div style={{
-        background:`linear-gradient(135deg, #0d1117 0%, #0f172a 100%)`,
-        borderBottom:"1px solid #1e3a5f", padding:"12px 16px",
-        display:"flex", justifyContent:"space-between", alignItems:"center",
-      }}>
+<div class="app-container" id="app-root">
+    <div class="header">Pediatric Calculator & Reference</div>
+    
+    <div class="weight-bar" id="weight-header">
+        <label>Patient Weight</label>
         <div>
-          <div style={{ fontSize:11, color:"#64748b", letterSpacing:2, textTransform:"uppercase" }}>Dilution</div>
-          <div style={{ fontSize:20, fontWeight:700, color:drug.color }}>{totalVol} ml</div>
+            <input type="number" id="global-weight" value="10" step="0.1" min="0.1">
+            <span style="font-weight: bold; color: var(--text-light);">kg</span>
         </div>
-        <div style={{
-          background:"rgba(0,212,170,0.1)", border:"1px solid rgba(0,212,170,0.3)",
-          borderRadius:6, padding:"4px 8px", fontSize:10, color:"#00d4aa", letterSpacing:1,
-        }}>TARGET: 1 ml/hr = {dose} {doseUnitLabel}</div>
-      </div>
-
-      {/* Main content */}
-      <div style={{ padding:"14px 16px" }}>
-        {result?.error ? (
-          <div style={{
-            background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)",
-            borderRadius:8, padding:"12px", fontSize:12, color:"#fca5a5",
-          }}>⚠️ {result.error}</div>
-        ) : result ? (
-          <>
-            {/* Pre-dilution note */}
-            {drug.preDilution && (
-              <div style={{
-                background:"rgba(251,191,36,0.08)", border:"1px solid rgba(251,191,36,0.25)",
-                borderRadius:8, padding:"8px 12px", fontSize:11, color:"#fcd34d",
-                marginBottom:12, lineHeight:1.5,
-              }}>
-                <span style={{ fontWeight:700 }}>⚗️ PRE-DILUTION: </span>{drug.preDilution}
-              </div>
-            )}
-
-            {/* Preparation formula */}
-            <div style={{
-              background:"rgba(0,212,170,0.06)", border:"1px solid rgba(0,212,170,0.2)",
-              borderRadius:8, padding:"12px 14px", marginBottom:12,
-            }}>
-              <div style={{ fontSize:10, color:"#64748b", letterSpacing:1, marginBottom:8, textTransform:"uppercase" }}>Preparation</div>
-              <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
-                <span style={{
-                  background:"rgba(0,212,170,0.15)", border:"1px solid rgba(0,212,170,0.4)",
-                  borderRadius:6, padding:"4px 10px", fontSize:13, fontWeight:700, color:"#00d4aa",
-                }}>
-                  {result.drugVolMl} ml
-                </span>
-                <span style={{ fontSize:12, color:"#94a3b8" }}>{drug.name}</span>
-                <span style={{ fontSize:12, color:"#64748b" }}>({drug.concLabel})</span>
-                <span style={{ fontSize:14, color:"#475569" }}>+</span>
-                <span style={{
-                  background:"rgba(56,189,248,0.12)", border:"1px solid rgba(56,189,248,0.3)",
-                  borderRadius:6, padding:"4px 10px", fontSize:13, fontWeight:700, color:"#38bdf8",
-                }}>
-                  {result.nsVolMl} ml NS
-                </span>
-                <span style={{ fontSize:12, color:"#475569" }}>=</span>
-                <span style={{ fontSize:13, fontWeight:700, color:"#e2e8f0" }}>{totalVol} ml</span>
-              </div>
-            </div>
-
-            {/* Rate Table */}
-            <div style={{ fontSize:10, color:"#64748b", letterSpacing:1, marginBottom:6, textTransform:"uppercase" }}>
-              Rate → Dose Delivered
-            </div>
-            <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
-              {result.rateTable.map(row => (
-                <div key={row.rate} style={{
-                  display:"flex", justifyContent:"space-between", alignItems:"center",
-                  padding:"5px 10px", borderRadius:6,
-                  background: row.isTarget ? `${drug.bgColor}` : "rgba(255,255,255,0.02)",
-                  border: row.isTarget ? `1px solid ${drug.color}44` : "1px solid transparent",
-                }}>
-                  <span style={{ fontSize:12, color: row.isTarget ? "#e2e8f0" : "#94a3b8", fontWeight: row.isTarget ? 600 : 400 }}>
-                    {row.rate} ml/hr
-                  </span>
-                  <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                    <span style={{ fontSize:12, color: row.isTarget ? drug.color : "#64748b", fontWeight: row.isTarget ? 700 : 400 }}>
-                      {row.deliveredDose}
-                    </span>
-                    <span style={{ fontSize:10, color:"#475569" }}>{doseUnitLabel}</span>
-                    {row.isTarget && <span style={{ fontSize:9, color:drug.color, border:`1px solid ${drug.color}44`, borderRadius:3, padding:"1px 4px" }}>TARGET</span>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          <div style={{ color:"#475569", fontSize:12, textAlign:"center", padding:"20px 0" }}>
-            Enter weight and dose to calculate
-          </div>
-        )}
-      </div>
     </div>
-  );
-}
 
-function InfusionTab({ selDrug, onDrugSelect, weight, setWeight, dose, setDose }) {
-  const result12 = useMemo(() => calcDilution(selDrug, weight, dose, 12), [selDrug, weight, dose]);
-  const result50 = useMemo(() => calcDilution(selDrug, weight, dose, 50), [selDrug, weight, dose]);
-
-  const categories = ["Vasopressor","Inotrope/Vasopressor","Inotrope","Inotrope/Vasodilator","Analgesic/Sedative","Anesthetic/Analgesic","Diuretic","Pulm. Vasodilator","Sedative","Antihypertensive","Metabolic"];
-
-  return (
-    <div style={{ display:"flex", height:"calc(100vh - 105px)" }}>
-      {/* Left: Drug Selector */}
-      <div style={{
-        width:220, background:"#0d1117", borderRight:"1px solid #1e3a5f",
-        overflowY:"auto", flexShrink:0,
-      }}>
-        <div style={{ padding:"12px", fontSize:10, color:"#475569", letterSpacing:2, textTransform:"uppercase", borderBottom:"1px solid #1e2340" }}>
-          Select Drug
-        </div>
-        {INFUSION_DRUGS.map(drug => (
-          <button key={drug.id} onClick={() => onDrugSelect(drug)}
-            style={{
-              width:"100%", textAlign:"left", padding:"10px 14px",
-              background: selDrug.id === drug.id ? `${drug.bgColor}` : "transparent",
-              border:"none", borderLeft: selDrug.id === drug.id ? `3px solid ${drug.color}` : "3px solid transparent",
-              cursor:"pointer", transition:"all 0.15s",
-            }}>
-            <div style={{ fontSize:12, fontWeight: selDrug.id === drug.id ? 700 : 400, color: selDrug.id === drug.id ? drug.color : "#94a3b8" }}>
-              {drug.name}
-            </div>
-            {drug.alias && <div style={{ fontSize:10, color:"#475569", marginTop:1 }}>{drug.alias}</div>}
-            <div style={{
-              fontSize:9, color:"#475569", marginTop:2,
-              background:"rgba(255,255,255,0.05)", borderRadius:3, padding:"1px 5px",
-              display:"inline-block", letterSpacing:0.5,
-            }}>{drug.cat}</div>
-          </button>
-        ))}
-      </div>
-
-      {/* Right: Calculator */}
-      <div style={{ flex:1, overflowY:"auto", padding:"20px" }}>
-        {/* Drug Header */}
-        <div style={{
-          background:`linear-gradient(135deg, #111827 0%, #0f172a 100%)`,
-          border:"1px solid #1e3a5f", borderRadius:12, padding:"16px 20px", marginBottom:20,
-          borderLeft:`4px solid ${selDrug.color}`,
-        }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", flexWrap:"wrap", gap:12 }}>
-            <div>
-              <div style={{ fontSize:20, fontWeight:700, color:selDrug.color }}>{selDrug.name}</div>
-              {selDrug.alias && <div style={{ fontSize:12, color:"#64748b" }}>{selDrug.alias}</div>}
-              <div style={{ fontSize:11, color:"#94a3b8", marginTop:4 }}>
-                <span style={{ color:"#64748b" }}>Category: </span>{selDrug.cat} • 
-                <span style={{ color:"#64748b" }}> Available as: </span>{selDrug.concLabel}
-              </div>
-            </div>
-            <div style={{ fontSize:11, color:"#94a3b8", maxWidth:340, lineHeight:1.6 }}>
-              <div style={{ color:"#64748b", fontSize:10, letterSpacing:1, textTransform:"uppercase", marginBottom:3 }}>Indication</div>
-              {selDrug.indication}
-            </div>
-          </div>
-          <div style={{
-            marginTop:10, padding:"8px 12px", background:"rgba(255,255,255,0.03)",
-            borderRadius:8, fontSize:11, color:"#64748b", lineHeight:1.5,
-          }}>
-            📝 {selDrug.notes}
-          </div>
-        </div>
-
-        {/* Controls Row */}
-        <div style={{
-          display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:20,
-          background:"#111827", border:"1px solid #1e3a5f", borderRadius:12, padding:"16px 20px",
-        }}>
-          <NumInput label="Patient Weight" value={weight} onChange={v => setWeight(v)} min={0.5} max={200} step={0.5} unit="kg" placeholder="e.g. 10" />
-          <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-            <label style={{ fontSize:10, color:"#64748b", letterSpacing:1, textTransform:"uppercase" }}>
-              Target Dose ({selDrug.type})
-            </label>
-            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-              <input
-                type="range" min={selDrug.min} max={selDrug.max} step={selDrug.step}
-                value={dose}
-                onChange={e => setDose(parseFloat(e.target.value))}
-                style={{ flex:1, accentColor:selDrug.color, cursor:"pointer" }}
-              />
-              <input
-                type="number" min={selDrug.min} max={selDrug.max} step={selDrug.step}
-                value={dose}
-                onChange={e => setDose(parseFloat(e.target.value) || selDrug.min)}
-                style={{
-                  background:"#1e293b", border:`1px solid ${selDrug.color}55`, borderRadius:6,
-                  color:selDrug.color, padding:"6px 10px", fontSize:14, fontWeight:700,
-                  fontFamily:"inherit", width:90, outline:"none", textAlign:"center",
-                }}
-              />
-            </div>
-            <div style={{ fontSize:10, color:"#475569" }}>
-              Range: {selDrug.min}–{selDrug.max} {selDrug.type}
-            </div>
-          </div>
-        </div>
-
-        {/* Dilution Cards */}
-        <div style={{ display:"flex", gap:16, flexWrap:"wrap" }}>
-          <DilutionCard drug={selDrug} weight={weight} dose={dose} totalVol={12} result={result12} />
-          <DilutionCard drug={selDrug} weight={weight} dose={dose} totalVol={50} result={result50} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function GIRTab() {
-  const [inputs, setInputs] = useState({ targetGIR:0, weight:0, dexConc:25, glucoseVol:0, additionalFluid:0 });
-  const upd = (k,v) => setInputs(p => ({...p, [k]:v}));
-
-  const result = useMemo(() =>
-    calcGIR(inputs.targetGIR, inputs.weight, inputs.dexConc, inputs.glucoseVol, inputs.additionalFluid),
-    [inputs]
-  );
-
-  const stockOptions = [
-    { label:"D5 (5%)", value:5, color:"#22d3ee" },
-    { label:"D10 (10%)", value:10, color:"#34d399" },
-    { label:"D25 (25%)", value:25, color:"#f59e0b" },
-    { label:"D50 (50%)", value:50, color:"#f87171" },
-  ];
-
-  return (
-    <div style={{ maxWidth:900, margin:"0 auto", padding:"24px 20px" }}>
-      <div style={{
-        background:"#111827", border:"1px solid #1e3a5f", borderRadius:12,
-        padding:"20px", marginBottom:20,
-        borderLeft:"4px solid #f59e0b",
-      }}>
-        <div style={{ fontSize:18, fontWeight:700, color:"#f59e0b", marginBottom:4 }}>
-          🍬 Glucose Infusion Rate (GIR) Calculator
-        </div>
-        <div style={{ fontSize:12, color:"#64748b" }}>
-          Calculates dextrose preparation for target GIR. Total syringe = 50 ml.
-          <span style={{ display:"block", marginTop:2, color:"#475569" }}>
-            Formula: GIR (mg/kg/min) = [Dextrose% × Rate (ml/hr)] ÷ [Weight (kg) × 6]
-          </span>
-        </div>
-      </div>
-
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:20 }}>
-        {/* Inputs Card */}
-        <div style={{ background:"#111827", border:"1px solid #1e3a5f", borderRadius:12, padding:"20px" }}>
-          <div style={{ fontSize:12, color:"#64748b", letterSpacing:1, textTransform:"uppercase", marginBottom:16 }}>Inputs</div>
-          <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-            <NumInput label="Target GIR" value={inputs.targetGIR} onChange={v=>upd("targetGIR",v)} min={0} max={20} step={0.5} unit="mg/kg/min" placeholder="0" />
-            <NumInput label="Patient Weight" value={inputs.weight} onChange={v=>upd("weight",v)} min={0} max={200} step={0.5} unit="kg" placeholder="0" />
-            <NumInput label="Glucose Volume (of dextrose stock)" value={inputs.glucoseVol} onChange={v=>upd("glucoseVol",v)} min={0} max={50} step={0.5} unit="ml" placeholder="0" />
-            <NumInput label="Additional Fluid (NS or other)" value={inputs.additionalFluid} onChange={v=>upd("additionalFluid",v)} min={0} max={50} step={0.5} unit="ml" placeholder="0" />
-          </div>
-
-          {/* Dextrose stock selector */}
-          <div style={{ marginTop:16 }}>
-            <div style={{ fontSize:10, color:"#64748b", letterSpacing:1, textTransform:"uppercase", marginBottom:8 }}>Dextrose Stock</div>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-              {stockOptions.map(s => (
-                <button key={s.value} onClick={() => upd("dexConc", s.value)}
-                  style={{
-                    padding:"7px 14px", borderRadius:8, border:`1px solid ${inputs.dexConc===s.value ? s.color : "#1e3a5f"}`,
-                    background: inputs.dexConc===s.value ? `${s.color}22` : "transparent",
-                    color: inputs.dexConc===s.value ? s.color : "#64748b",
-                    cursor:"pointer", fontSize:12, fontWeight: inputs.dexConc===s.value ? 700 : 400,
-                    fontFamily:"inherit",
-                  }}>
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Volume indicator */}
-          <div style={{ marginTop:16 }}>
-            <div style={{ fontSize:10, color:"#64748b", letterSpacing:1, textTransform:"uppercase", marginBottom:6 }}>Volume Breakdown (50 ml total)</div>
-            <div style={{ background:"#1e293b", borderRadius:8, overflow:"hidden", height:24, display:"flex" }}>
-              {[
-                { label:"Dextrose", vol:inputs.glucoseVol, color:"#f59e0b" },
-                { label:"Add. Fluid", vol:inputs.additionalFluid, color:"#38bdf8" },
-                { label:"NS", vol:Math.max(0, 50 - inputs.glucoseVol - inputs.additionalFluid), color:"#334155" },
-              ].map(seg => (
-                <div key={seg.label} style={{
-                  width:`${Math.min(100, (seg.vol/50)*100)}%`,
-                  background:seg.color, minWidth: seg.vol > 0 ? 2 : 0,
-                  display:"flex", alignItems:"center", justifyContent:"center",
-                  fontSize:9, color:"white", fontWeight:600, overflow:"hidden",
-                  transition:"width 0.3s",
-                }}>
-                  {seg.vol >= 5 ? `${seg.vol}` : ""}
+    <div class="content">
+        <div id="tab-infusion" class="tab-content active">
+            <div class="card">
+                <div class="form-row">
+                    <select id="infusion-select"></select>
                 </div>
-              ))}
-            </div>
-            <div style={{ display:"flex", gap:12, marginTop:4, fontSize:10, color:"#64748b" }}>
-              <span>🟡 Dextrose: {inputs.glucoseVol} ml</span>
-              <span>🔵 Add. fluid: {inputs.additionalFluid} ml</span>
-              <span>⬜ NS: {Math.max(0, 50-inputs.glucoseVol-inputs.additionalFluid)} ml</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Results Card */}
-        <div style={{ background:"#111827", border:"1px solid #1e3a5f", borderRadius:12, padding:"20px" }}>
-          <div style={{ fontSize:12, color:"#64748b", letterSpacing:1, textTransform:"uppercase", marginBottom:16 }}>Results</div>
-          {result?.error ? (
-            <div style={{
-              background:"rgba(239,68,68,0.1)", border:"1px solid rgba(239,68,68,0.3)",
-              borderRadius:8, padding:"12px", fontSize:12, color:"#fca5a5",
-            }}>⚠️ {result.error}</div>
-          ) : result ? (
-            <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-              {/* Preparation Instruction */}
-              <div style={{
-                background:"rgba(245,158,11,0.08)", border:"1px solid rgba(245,158,11,0.25)",
-                borderRadius:10, padding:"14px",
-              }}>
-                <div style={{ fontSize:10, color:"#f59e0b", letterSpacing:1, textTransform:"uppercase", marginBottom:8 }}>Preparation (50 ml syringe)</div>
-                <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap", fontSize:13 }}>
-                  <span style={{
-                    background:"rgba(245,158,11,0.2)", border:"1px solid rgba(245,158,11,0.4)",
-                    borderRadius:6, padding:"3px 10px", fontWeight:700, color:"#fcd34d",
-                  }}>{result.glucoseVol} ml</span>
-                  <span style={{ color:"#94a3b8" }}>D{inputs.dexConc}</span>
-                  {result.additionalFluid > 0 && <>
-                    <span style={{ color:"#475569" }}>+</span>
-                    <span style={{
-                      background:"rgba(56,189,248,0.15)", border:"1px solid rgba(56,189,248,0.3)",
-                      borderRadius:6, padding:"3px 10px", fontWeight:700, color:"#7dd3fc",
-                    }}>{result.additionalFluid} ml</span>
-                    <span style={{ color:"#94a3b8" }}>add. fluid</span>
-                  </>}
-                  <span style={{ color:"#475569" }}>+</span>
-                  <span style={{
-                    background:"rgba(100,116,139,0.2)", border:"1px solid rgba(100,116,139,0.3)",
-                    borderRadius:6, padding:"3px 10px", fontWeight:700, color:"#94a3b8",
-                  }}>{result.nsVol} ml</span>
-                  <span style={{ color:"#94a3b8" }}>NS</span>
-                  <span style={{ color:"#475569" }}>=</span>
-                  <span style={{ fontWeight:700, color:"#e2e8f0" }}>50 ml total</span>
-                </div>
-              </div>
-
-              {/* Key Metrics */}
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-                {[
-                  { label:"Final Conc.", value:`${result.finalConc}%`, color:"#f59e0b" },
-                  { label:"Actual GIR", value:`${result.actualGIR} mg/kg/min`, color:"#34d399" },
-                  { label:"Run at Rate", value:`${result.rate} ml/hr`, color:"#818cf8", bold:true },
-                  { label:"For GIR target", value:`${inputs.targetGIR} mg/kg/min`, color:"#64748b" },
-                ].map(m => (
-                  <div key={m.label} style={{
-                    background:"rgba(255,255,255,0.03)", borderRadius:8, padding:"10px 12px",
-                    border: m.bold ? `1px solid ${m.color}44` : "none",
-                  }}>
-                    <div style={{ fontSize:10, color:"#64748b", letterSpacing:0.5, marginBottom:3 }}>{m.label}</div>
-                    <div style={{ fontSize:14, fontWeight:700, color:m.color }}>{m.value}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* GIR at Various Rates */}
-              <div>
-                <div style={{ fontSize:10, color:"#64748b", letterSpacing:1, textTransform:"uppercase", marginBottom:6 }}>GIR at Various Rates</div>
-                <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
-                  {result.girAtRates.map(row => {
-                    const isTarget = Math.abs(row.rate - result.rate) < 0.1;
-                    return (
-                      <div key={row.rate} style={{
-                        display:"flex", justifyContent:"space-between", padding:"5px 10px",
-                        borderRadius:6,
-                        background: isTarget ? "rgba(245,158,11,0.1)" : "rgba(255,255,255,0.02)",
-                        border: isTarget ? "1px solid rgba(245,158,11,0.3)" : "1px solid transparent",
-                      }}>
-                        <span style={{ fontSize:12, color: isTarget ? "#e2e8f0" : "#64748b" }}>
-                          {row.rate} ml/hr
-                        </span>
-                        <span style={{ fontSize:12, fontWeight: isTarget ? 700 : 400, color: isTarget ? "#f59e0b" : "#475569" }}>
-                          {row.gir} mg/kg/min
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div style={{ color:"#475569", fontSize:12, textAlign:"center", padding:"40px 0" }}>
-              Enter values above to calculate GIR
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DrugRefTab() {
-  const [search, setSearch] = useState("");
-  const [cat, setCat] = useState("All");
-  const [expanded, setExpanded] = useState(null);
-
-  const allCats = useMemo(() => ["All", ...Array.from(new Set(DRUG_REF.map(d=>d.cat)))], []);
-  const catColors = {
-    "Antibiotic":"#34d399","Antiviral":"#2dd4bf","Antifungal":"#22d3ee",
-    "Anticonvulsant":"#818cf8","Analgesic/Antipyretic":"#f472b6",
-    "Analgesic/NSAID":"#f97316","Opioid Analgesic":"#c084fc","Analgesic":"#a78bfa","Sedation":"#8b5cf6",
-    "Antiarrhythmic":"#f87171","Anticholinergic":"#fbbf24","Cardiac Glycoside":"#a3e635","ACE Inhibitor":"#34d399","Vasodilator":"#38bdf8","Calcium Channel Blocker":"#fb923c",
-    "Bronchodilator":"#38bdf8","Corticosteroid":"#f59e0b","Antiemetic":"#e879f9","PPI":"#a3e635",
-    "IV Fluid":"#94a3b8","Electrolyte":"#60a5fa","Blood Product":"#f87171","Haemostatic":"#fbbf24",
-    "Osmotic Agent":"#7dd3fc","Neonatal":"#86efac","Metabolic":"#fcd34d","Corticosteroid":"#f59e0b",
-    "Immunologic":"#a5b4fc","Emergency":"#f87171","Reversal Agent":"#34d399",
-    "Prokinetic":"#a3e635", "Laxative":"#a3e635",
-  };
-
-  const filtered = useMemo(() =>
-    DRUG_REF.filter(d => {
-      const q = search.toLowerCase();
-      return (cat === "All" || d.cat === cat) &&
-        (!q || d.name.toLowerCase().includes(q) || (d.alias||"").toLowerCase().includes(q) || d.indication.toLowerCase().includes(q));
-    }),
-    [search, cat]
-  );
-
-  return (
-    <div style={{ padding:"20px", maxWidth:1100, margin:"0 auto" }}>
-      {/* Search & Filter */}
-      <div style={{ display:"flex", gap:12, marginBottom:16, flexWrap:"wrap" }}>
-        <input
-          placeholder="🔍  Search drug, indication..."
-          value={search} onChange={e=>setSearch(e.target.value)}
-          style={{
-            flex:1, minWidth:220, background:"#111827", border:"1px solid #334155",
-            borderRadius:8, color:"#e2e8f0", padding:"10px 14px", fontSize:13,
-            fontFamily:"inherit", outline:"none",
-          }}
-        />
-        <div style={{ fontSize:11, color:"#64748b", alignSelf:"center", whiteSpace:"nowrap" }}>
-          {filtered.length} drug{filtered.length!==1?"s":""}
-        </div>
-      </div>
-
-      {/* Category pills */}
-      <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:16 }}>
-        {allCats.map(c => (
-          <button key={c} onClick={()=>setCat(c)}
-            style={{
-              padding:"4px 10px", borderRadius:20, border:"none", cursor:"pointer",
-              background: cat===c ? (catColors[c]||"#00d4aa") : "#1e293b",
-              color: cat===c ? "#0d1117" : "#64748b",
-              fontSize:11, fontWeight: cat===c ? 700 : 400,
-              fontFamily:"inherit",
-            }}>{c}</button>
-        ))}
-      </div>
-
-      {/* Drug Cards */}
-      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-        {filtered.map((d,i) => {
-          const isOpen = expanded === i;
-          const cc = catColors[d.cat] || "#64748b";
-          return (
-            <div key={i} style={{
-              background:"#111827", border:`1px solid ${isOpen ? cc+"44" : "#1e3a5f"}`,
-              borderRadius:10, overflow:"hidden", transition:"all 0.2s",
-            }}>
-              <button onClick={()=>setExpanded(isOpen ? null : i)}
-                style={{
-                  width:"100%", background:"transparent", border:"none",
-                  display:"flex", alignItems:"center", gap:10, padding:"12px 16px",
-                  cursor:"pointer", textAlign:"left",
-                }}>
-                <span style={{
-                  background:`${cc}22`, border:`1px solid ${cc}44`,
-                  borderRadius:4, padding:"2px 7px", fontSize:9, color:cc,
-                  letterSpacing:0.5, whiteSpace:"nowrap", flexShrink:0,
-                }}>{d.cat}</span>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <span style={{ fontSize:13, fontWeight:700, color:"#e2e8f0" }}>{d.name}</span>
-                  {d.alias && <span style={{ fontSize:11, color:"#475569", marginLeft:6 }}>({d.alias})</span>}
-                </div>
-                <span style={{ fontSize:11, color:"#475569", marginRight:8, flex:2, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                  {d.dose.split(";")[0]}
-                </span>
-                <span style={{ fontSize:11, color:"#334155", flexShrink:0 }}>
-                  {isOpen ? "▲" : "▼"}
-                </span>
-              </button>
-
-              {isOpen && (
-                <div style={{ padding:"12px 16px", borderTop:"1px solid #1e3a5f", display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-                  <div>
-                    <div style={{ fontSize:9, color:"#475569", letterSpacing:1, textTransform:"uppercase", marginBottom:4 }}>Dose</div>
-                    <div style={{ fontSize:12, color:"#e2e8f0", lineHeight:1.6 }}>
-                      {d.dose.split(";").map((s,i)=><div key={i} style={{marginBottom:2}}>{"• "+s.trim()}</div>)}
+                <div class="form-row" style="margin-top: 10px; border-bottom: 1px solid var(--secondary); padding-bottom: 10px;">
+                    <label>Protocol Mode</label>
+                    <div class="input-group" style="flex: 2;">
+                        <select id="mode-select-12" style="width: 100%; text-align: right; font-size: 0.8rem;">
+                            <option value="fixed" selected>Fixed Rate (1 mL/hr)</option>
+                            <option value="standard">Standard (Rate = Dose)</option>
+                        </select>
                     </div>
-                    <div style={{ fontSize:10, color:"#64748b", marginTop:6 }}>
-                      <span style={{ color:"#475569" }}>Max: </span>{d.maxDose} &nbsp;|&nbsp;
-                      <span style={{ color:"#475569" }}>Route: </span>{d.route}
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize:9, color:"#475569", letterSpacing:1, textTransform:"uppercase", marginBottom:4 }}>Indication</div>
-                    <div style={{ fontSize:12, color:"#94a3b8", lineHeight:1.5, marginBottom:8 }}>{d.indication}</div>
-                    {d.notes && (
-                      <>
-                        <div style={{ fontSize:9, color:"#475569", letterSpacing:1, textTransform:"uppercase", marginBottom:4 }}>Clinical Notes</div>
-                        <div style={{
-                          fontSize:11, color:"#64748b", lineHeight:1.5,
-                          background:"rgba(255,255,255,0.02)", borderRadius:6, padding:"6px 10px",
-                          borderLeft:`2px solid ${cc}`,
-                        }}>{d.notes}</div>
-                      </>
-                    )}
-                  </div>
                 </div>
-              )}
+                <div class="form-row" style="margin-top: 10px;">
+                    <label>Ampoule Conc.</label>
+                    <div class="input-group">
+                        <input type="number" id="amp-conc" value="1" step="0.1" min="0.1">
+                        <span class="unit" id="conc-unit">mg/mL</span>
+                    </div>
+                </div>
             </div>
-          );
-        })}
-        {filtered.length === 0 && (
-          <div style={{ textAlign:"center", color:"#475569", padding:"40px", fontSize:13 }}>
-            No drugs found matching "{search}"
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
-/* ═══════════════════════════════════════════════════════════════
-   MAIN APP
-═══════════════════════════════════════════════════════════════ */
-export default function App() {
-  const [tab, setTab] = useState("infusion");
-  const [selDrug, setSelDrug] = useState(INFUSION_DRUGS[0]);
-  const [weight, setWeight] = useState(10);
-  const [dose, setDose] = useState(INFUSION_DRUGS[0].dose);
+            <div class="card">
+                <h3 class="card-title">Target Dose</h3>
+                <div class="slider-container">
+                    <div class="dose-readout">
+                        <span id="dose-val">0.00</span> 
+                        <span id="dose-unit" style="font-size: 1rem; color: var(--text-light);">mcg/kg/min</span>
+                    </div>
+                    <input type="range" id="dose-slider" min="0" max="1" step="0.01" value="0">
+                </div>
+                <div id="mode-hint-12" style="font-size: 0.75rem; color: var(--text-light); text-align: center; display: none;">
+                    *In Standard Mode, syringe prep is fixed for patient weight. Adjust dose by changing the pump rate.
+                </div>
+            </div>
 
-  const handleDrugSelect = (drug) => {
-    setSelDrug(drug);
-    setDose(drug.dose);
-  };
-
-  const tabs = [
-    { id:"infusion", label:"💉 Infusion Calculator" },
-    { id:"gir", label:"🍬 GIR Calculator" },
-    { id:"drugs", label:"📋 Drug Reference" },
-  ];
-
-  return (
-    <div style={{ minHeight:"100vh", background:"#0d1117", color:"#e2e8f0", fontFamily:"'IBM Plex Mono', 'Courier New', monospace" }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap');
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        ::-webkit-scrollbar { width: 5px; height: 5px; }
-        ::-webkit-scrollbar-track { background: #0d1117; }
-        ::-webkit-scrollbar-thumb { background: #1e3a5f; border-radius: 3px; }
-        input[type=range] { height: 4px; appearance: none; border-radius: 4px; cursor: pointer; }
-        input[type=range]::-webkit-slider-thumb { appearance: none; width: 14px; height: 14px; border-radius: 50%; }
-      `}</style>
-
-      {/* Header */}
-      <div style={{
-        background:"linear-gradient(90deg, #0d1117 0%, #0f172a 50%, #0d1117 100%)",
-        borderBottom:"1px solid #1e3a5f", padding:"12px 20px",
-        display:"flex", alignItems:"center", gap:14,
-      }}>
-        <div style={{ fontSize:26 }}>⚕️</div>
-        <div>
-          <div style={{ fontSize:18, fontWeight:700, color:"#00d4aa", letterSpacing:2 }}>PediCalc Pro</div>
-          <div style={{ fontSize:9, color:"#334155", letterSpacing:3, textTransform:"uppercase" }}>
-            Pediatric Drug Calculator · Harriet Lane Reference
-          </div>
+            <div class="card" style="padding: 0; border: none; box-shadow: none; background: transparent;">
+                <div class="recipe-box" id="recipe-container">
+                    <div class="recipe-header" style="color: var(--success);">Preparation (12 mL Syringe)</div>
+                    <div class="recipe-row">
+                        <span>1. Draw Drug:</span>
+                        <span class="recipe-val" id="drug-vol-out">0.00 mL</span>
+                    </div>
+                    <div class="recipe-row" style="font-size: 0.9rem; color: var(--text-light); margin-top: -8px; margin-bottom: 12px; justify-content: flex-end;">
+                        (<span id="total-drug-mg">0.00 mg</span> total)
+                    </div>
+                    <div class="recipe-row">
+                        <span>2. Add NS:</span>
+                        <span class="recipe-val" id="ns-vol-out">12.00 mL</span>
+                    </div>
+                    <div class="recipe-row recipe-total">
+                        <span>Total Volume:</span>
+                        <span class="recipe-val">12.00 mL</span>
+                    </div>
+                </div>
+                <div id="volume-error" class="error-text">Drug required exceeds 12 mL!</div>
+                <div class="instruction" id="pump-instruction">Run Pump at 1 mL/hr</div>
+            </div>
         </div>
-        <div style={{ marginLeft:"auto", fontSize:10, color:"#1e3a5f", letterSpacing:1 }}>
-          For clinical use. Always verify doses.
+
+        <div id="tab-infusion-50" class="tab-content">
+            <div class="card">
+                <div class="form-row">
+                    <select id="infusion-select-50"></select>
+                </div>
+                <div class="form-row" style="margin-top: 10px; border-bottom: 1px solid var(--secondary); padding-bottom: 10px;">
+                    <label>Protocol Mode</label>
+                    <div class="input-group" style="flex: 2;">
+                        <select id="mode-select-50" style="width: 100%; text-align: right; font-size: 0.8rem; color: var(--purple);">
+                            <option value="standard" selected>Standard PICU (Rate = Dose)</option>
+                            <option value="fixed">Fixed Rate (2 mL/hr)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row" style="margin-top: 10px;">
+                    <label>Ampoule Conc.</label>
+                    <div class="input-group">
+                        <input type="number" id="amp-conc-50" value="1" step="0.1" min="0.1">
+                        <span class="unit" id="conc-unit-50">mg/mL</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3 class="card-title" style="color: var(--purple);">Target Dose</h3>
+                <div class="slider-container">
+                    <div class="dose-readout" style="color: var(--purple);">
+                        <span id="dose-val-50">0.00</span> 
+                        <span id="dose-unit-50" style="font-size: 1rem; color: var(--text-light);">mcg/kg/min</span>
+                    </div>
+                    <input type="range" id="dose-slider-50" min="0" max="1" step="0.01" value="0">
+                </div>
+                <div id="mode-hint-50" style="font-size: 0.75rem; color: var(--text-light); text-align: center;">
+                    *In Standard Mode, syringe prep is fixed for patient weight (Rule of 3). Adjust dose by changing the pump rate.
+                </div>
+            </div>
+
+            <div class="card" style="padding: 0; border: none; box-shadow: none; background: transparent;">
+                <div class="recipe-box purple" id="recipe-container-50">
+                    <div class="recipe-header" style="color: var(--purple);">Preparation (50 mL Syringe)</div>
+                    <div class="recipe-row">
+                        <span>1. Draw Drug:</span>
+                        <span class="recipe-val" id="drug-vol-out-50">0.00 mL</span>
+                    </div>
+                    <div class="recipe-row" style="font-size: 0.9rem; color: var(--text-light); margin-top: -8px; margin-bottom: 12px; justify-content: flex-end;">
+                        (<span id="total-drug-mg-50">0.00 mg</span> total)
+                    </div>
+                    <div class="recipe-row">
+                        <span>2. Add NS:</span>
+                        <span class="recipe-val" id="ns-vol-out-50">50.00 mL</span>
+                    </div>
+                    <div class="recipe-row recipe-total">
+                        <span>Total Volume:</span>
+                        <span class="recipe-val">50.00 mL</span>
+                    </div>
+                </div>
+                <div id="volume-error-50" class="error-text">Drug required exceeds 50 mL!</div>
+                <div class="instruction" id="pump-instruction-50" style="background: var(--purple);">Run Pump at 2.00 mL/hr</div>
+            </div>
         </div>
-      </div>
 
-      {/* Tab Bar */}
-      <div style={{ display:"flex", background:"#0a0f1a", borderBottom:"1px solid #1e3a5f" }}>
-        {tabs.map(t => (
-          <button key={t.id} onClick={()=>setTab(t.id)}
-            style={{
-              padding:"11px 22px", background:"transparent", border:"none",
-              borderBottom: tab===t.id ? "2px solid #00d4aa" : "2px solid transparent",
-              color: tab===t.id ? "#00d4aa" : "#475569",
-              fontWeight: tab===t.id ? 700 : 400,
-              cursor:"pointer", fontSize:12, letterSpacing:0.5,
-              fontFamily:"inherit", transition:"all 0.15s",
-            }}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+        <div id="tab-gir" class="tab-content">
+            <div class="card">
+                <h3 class="card-title">24-Hour Fluid Volumes</h3>
+                <div class="form-row">
+                    <label>Target GIR</label>
+                    <div class="input-group">
+                        <input type="number" id="gir-target" value="6" step="0.1" min="1">
+                        <span class="unit">mg/kg/min</span>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label>Total Fluid Volume</label>
+                    <div class="input-group">
+                        <input type="number" id="fluid-total-vol" value="0" step="10" min="0">
+                        <span class="unit">mL/day</span>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label>Additional Fluid<br><span style="font-size: 0.75rem; color: var(--text-light);">(Enteral, Meds)</span></label>
+                    <div class="input-group">
+                        <input type="number" id="fluid-extra-vol" value="0" step="10" min="0">
+                        <span class="unit">mL/day</span>
+                    </div>
+                </div>
+                <div class="form-row" style="border-top: 1px solid var(--border); padding-top: 10px; margin-top: 5px;">
+                    <label>Net Dextrose Pump Rate</label>
+                    <div class="input-group">
+                        <span class="highlight-text" id="net-dex-rate">0.0</span>
+                        <span class="unit" style="font-weight: bold;">mL/hr</span>
+                    </div>
+                </div>
+            </div>
 
-      {/* Content */}
-      {tab === "infusion" && (
-        <InfusionTab
-          selDrug={selDrug} onDrugSelect={handleDrugSelect}
-          weight={weight} setWeight={setWeight}
-          dose={dose} setDose={setDose}
-        />
-      )}
-      {tab === "gir" && <GIRTab />}
-      {tab === "drugs" && <DrugRefTab />}
+            <div class="card">
+                <h3 class="card-title">Syringe Prep (Fixed 50 mL)</h3>
+                <div class="form-row">
+                    <label>Base Fluid</label>
+                    <div class="input-group">
+                        <select id="dex-low-select" style="text-align: right;">
+                            <option value="5">D5W (5%)</option>
+                            <option value="10" selected>D10W (10%)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label>High Conc. Fluid</label>
+                    <div class="input-group">
+                        <select id="dex-high-select" style="text-align: right; color: var(--accent);">
+                            <option value="10">D10W (10%)</option>
+                            <option value="25" selected>D25W (25%)</option>
+                            <option value="50">D50W (50%)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="recipe-box blue">
+                    <div class="recipe-header" style="color: var(--info);">Req. Concentration: <span id="req-dex-conc">0.0</span>%</div>
+                    <div class="recipe-row">
+                        <span id="label-high-dex">D25W Volume:</span>
+                        <span class="recipe-val" id="high-vol-out">0.00 mL</span>
+                    </div>
+                    <div class="recipe-row">
+                        <span id="label-low-dex">D10W Volume:</span>
+                        <span class="recipe-val" id="low-vol-out">0.00 mL</span>
+                    </div>
+                    <div class="recipe-row recipe-total">
+                        <span>Total Syringe:</span>
+                        <span class="recipe-val">50.0 mL</span>
+                    </div>
+                </div>
+                <div id="dex-error" class="error-text">Target concentration falls outside your selected Base/High limits!</div>
+            </div>
+            <button class="btn-download" onclick="downloadHTML()">📥 Download App to Device</button>
+        </div>
+
+        <div id="tab-drugs" class="tab-content">
+            <input type="text" class="search-bar" id="drug-search" placeholder="Search drug, condition (Meningitis, Neonate)...">
+            <div id="drug-list-container"></div>
+        </div>
+
     </div>
-  );
-}
+
+    <div class="tabs">
+        <div class="tab active" onclick="switchTab('infusion')">12mL Inf.</div>
+        <div class="tab" onclick="switchTab('infusion-50')">50mL Inf.</div>
+        <div class="tab" onclick="switchTab('gir')">Dextrose</div>
+        <div class="tab" onclick="switchTab('drugs')">Drugs</div>
+    </div>
+</div>
+
+<script>
+    const infusionDrugs = {
+        "Adrenaline": { unit: "mcg/kg/min", prepUnit: "mg", stdConc: 1, doseMin: 0.01, doseMax: 1.0, doseStep: 0.01, doseDef: 0.1, isPerMin: true, prepToDoseMult: 1000 },
+        "Noradrenaline": { unit: "mcg/kg/min", prepUnit: "mg", stdConc: 1, doseMin: 0.01, doseMax: 1.0, doseStep: 0.01, doseDef: 0.1, isPerMin: true, prepToDoseMult: 1000 },
+        "Dopamine": { unit: "mcg/kg/min", prepUnit: "mg", stdConc: 40, doseMin: 2, doseMax: 20, doseStep: 1, doseDef: 5, isPerMin: true, prepToDoseMult: 1000 },
+        "Dobutamine": { unit: "mcg/kg/min", prepUnit: "mg", stdConc: 50, doseMin: 2, doseMax: 20, doseStep: 1, doseDef: 5, isPerMin: true, prepToDoseMult: 1000 },
+        "Milrinone": { unit: "mcg/kg/min", prepUnit: "mg", stdConc: 1, doseMin: 0.25, doseMax: 0.75, doseStep: 0.05, doseDef: 0.5, isPerMin: true, prepToDoseMult: 1000 },
+        "Fentanyl": { unit: "mcg/kg/hr", prepUnit: "mcg", stdConc: 50, doseMin: 0.5, doseMax: 5, doseStep: 0.5, doseDef: 1, isPerMin: false, prepToDoseMult: 1 },
+        "Ketamine": { unit: "mg/kg/hr", prepUnit: "mg", stdConc: 50, doseMin: 0.1, doseMax: 2.5, doseStep: 0.1, doseDef: 1, isPerMin: false, prepToDoseMult: 1 },
+        "Lasix (Furosemide)": { unit: "mg/kg/hr", prepUnit: "mg", stdConc: 10, doseMin: 0.1, doseMax: 1.0, doseStep: 0.1, doseDef: 0.1, isPerMin: false, prepToDoseMult: 1 },
+        "Sildenafil": { unit: "mg/kg/hr", prepUnit: "mg", stdConc: 0.8, doseMin: 0.1, doseMax: 1.0, doseStep: 0.1, doseDef: 0.4, isPerMin: false, prepToDoseMult: 1 },
+        "Midazolam": { unit: "mg/kg/hr", prepUnit: "mg", stdConc: 1, doseMin: 0.05, doseMax: 0.2, doseStep: 0.01, doseDef: 0.1, isPerMin: false, prepToDoseMult: 1 },
+        "Labetalol": { unit: "mg/kg/hr", prepUnit: "mg", stdConc: 5, doseMin: 0.25, doseMax: 3.0, doseStep: 0.25, doseDef: 1.0, isPerMin: false, prepToDoseMult: 1 },
+        "Insulin": { unit: "units/kg/hr", prepUnit: "units", stdConc: 40, doseMin: 0.05, doseMax: 0.2, doseStep: 0.01, doseDef: 0.1, isPerMin: false, prepToDoseMult: 1 }
+    };
+
+    const pedDoses = [
+        { cat: "Antibiotic", name: "Amikacin", dose: "<strong>Preterm (<34wks):</strong> 15 mg/kg/dose q48h<br><strong>Term (<7 days):</strong> 15 mg/kg/dose q24h<br><strong>>7 days/Child:</strong> 15-22.5 mg/kg/day IV div q8-24h", notes: "Ototoxic/Nephrotoxic. Peak 20-30 mcg/mL, Trough <5 mcg/mL." },
+        { cat: "Antibiotic", name: "Ampicillin", dose: "<strong>Neonate (<7 days):</strong> 50 mg/kg/dose q12h. <span class='cns-alert'>[Meningitis]:</span> 100 mg/kg/dose q12h.<br><strong>Neonate (>7 days):</strong> 50 mg/kg/dose q8h. <span class='cns-alert'>[Meningitis]:</span> 100 mg/kg/dose q8h.<br><strong>Children:</strong> 100-200 mg/kg/day div q6h. <span class='cns-alert'>[Meningitis]:</span> 300-400 mg/kg/day div q6h.", notes: "Give slowly IV over 15-30 mins." },
+        { cat: "Antibiotic", name: "Cefotaxime", dose: "<strong>Neonate (<7 days):</strong> 50 mg/kg/dose q12h.<br><strong>Neonate (>7 days):</strong> 50 mg/kg/dose q8h.<br><strong>Children:</strong> 150-200 mg/kg/day div q8h. <span class='cns-alert'>[Meningitis]:</span> 225-300 mg/kg/day div q6-8h.", notes: "Drug of choice for neonatal sepsis/meningitis (does not displace bilirubin)." },
+        { cat: "Antibiotic", name: "Ceftriaxone", dose: "<strong>Neonates:</strong> AVOID (displaces bilirubin, causes biliary sludge with Calcium).<br><strong>Children (Standard):</strong> 50-75 mg/kg/day IV/IM div q12-24h.<br><span class='cns-alert'>[Meningitis]:</span> 100 mg/kg/day IV div q12-24h.", notes: "Max 4g/day." },
+        { cat: "Antibiotic", name: "Gentamicin", dose: "<strong>Term Neonate (<7 days):</strong> 4-5 mg/kg/dose q24h.<br><strong>Preterm (<34wks):</strong> 4.5-5 mg/kg/dose q36h-48h.<br><strong>Children:</strong> 5-7.5 mg/kg/day div q8h OR q24h.", notes: "Peak 8-10 mcg/mL, Trough <1 mcg/mL." },
+        { cat: "Antibiotic", name: "Meropenem", dose: "<strong>Neonate (<7 days):</strong> 20 mg/kg/dose q12h.<br><strong>Neonate (>7 days):</strong> 20 mg/kg/dose q8h.<br><strong>Children:</strong> 60 mg/kg/day div q8h. <span class='cns-alert'>[Meningitis]:</span> 120 mg/kg/day div q8h (Max 2g/dose).", notes: "Reserved for severe, resistant Gram -ve or ESBL infections." },
+        { cat: "Antibiotic", name: "Piperacillin-Tazobactam (Tazomac)", dose: "<strong>Neonates:</strong> 50-100 mg/kg/dose of Piperacillin component q8h.<br><strong>Children:</strong> 240-300 mg/kg/day (Piperacillin) div q6-8h.", notes: "Infuse over 30 minutes." },
+        { cat: "Antibiotic", name: "Vancomycin", dose: "<strong>Neonates:</strong> 15 mg/kg/dose. (Interval: q24h for extreme preterm, q12h for term).<br><strong>Children:</strong> 40-60 mg/kg/day IV div q6-8h. <span class='cns-alert'>[CNS/MRSA]:</span> 60 mg/kg/day IV div q6h.", notes: "Trough 15-20 mcg/mL for CNS. Infuse slowly over 1 hour (Red Man Syndrome)." },
+        { cat: "Antiviral", name: "Acyclovir", dose: "<strong>Neonates (HSV):</strong> 20 mg/kg/dose IV q8h for 14-21 days.<br><strong>Children (HSV/Encephalitis):</strong> 10-15 mg/kg/dose IV q8h.<br><strong>Children (Varicella):</strong> 10 mg/kg/dose IV q8h.", notes: "Ensure adequate IV hydration to prevent crystalluria." },
+        { cat: "Antifungal", name: "Fluconazole", dose: "<strong>Prophylaxis (<1000g):</strong> 3-6 mg/kg/dose twice weekly.<br><strong>Treatment (Neonates/Children):</strong> Load 12 mg/kg, then 6-12 mg/kg/day q24h.", notes: "Monitor LFTs." },
+        { cat: "Antifungal", name: "Amphotericin B (Deoxycholate)", dose: "<strong>Test dose:</strong> 0.1 mg/kg. <strong>Start:</strong> 0.25-0.5 mg/kg/day.<br><strong>Increase to:</strong> 1-1.5 mg/kg/day IV q24h.", notes: "Infuse over 2-6 hours. Monitor K+, Mg++, Renal function." },
+        { cat: "CNS", name: "Phenobarbital", dose: "<strong>Load (All):</strong> 20 mg/kg IV x 1. May repeat 5-10 mg/kg/dose (Max total 40 mg/kg).<br><strong>Maint (Neonate):</strong> 3-4 mg/kg/day div q12-24h.<br><strong>Maint (Child):</strong> 4-6 mg/kg/day div q12h.", notes: "Push rate: 1-2 mg/kg/min (Beware respiratory depression)." },
+        { cat: "CNS", name: "Phenytoin (Eptoin)", dose: "<strong>Load:</strong> 15-20 mg/kg IV.<br><strong>Maint:</strong> 5-8 mg/kg/day div q8-12h.", notes: "Do not mix with dextrose. Max IV push rate 1-3 mg/kg/min (Risk of arrhythmias)." },
+        { cat: "CNS", name: "Levetiracetam (Keppra)", dose: "<strong>Load (Status):</strong> 40-60 mg/kg/dose IV x 1 (Max 4.5g).<br><strong>Maint (Neonate):</strong> 10-30 mg/kg/day div q12h.<br><strong>Maint (Child):</strong> Initial 20 mg/kg/day, increase by 10-20 mg/kg/day.", notes: "Preferred over Phenytoin in many PICUs. Less hepatotoxic." },
+        { cat: "CNS", name: "Midazolam", dose: "<strong>Seizure/Status:</strong> 0.1-0.2 mg/kg/dose IV/IM/IN (Max 5mg).<br><strong>Infusion:</strong> 1-5 mcg/kg/min.", notes: "Watch for respiratory depression and hypotension." },
+        { cat: "CNS", name: "Lorazepam", dose: "<strong>Status Epilepticus:</strong> 0.05-0.1 mg/kg/dose IV over 2-5 mins.", notes: "May repeat in 10-15 mins. Max 4 mg/dose." },
+        { cat: "Steroid", name: "Dexamethasone", dose: "<strong>Croup:</strong> 0.6 mg/kg x 1 PO/IV/IM (Max 16mg).<br><strong>Extubation/Airway Edema:</strong> 0.25-0.5 mg/kg/dose q6h x 4-6 doses.<br><span class='cns-alert'>[Bacterial Meningitis]:</span> 0.15 mg/kg/dose IV q6h x 4 days.", notes: "For meningitis, give 10-20 min prior to first antibiotic." },
+        { cat: "Steroid", name: "Hydrocortisone", dose: "<strong>Stress dose / Shock:</strong> 1-2 mg/kg/dose IV q6h.<br><strong>Congenital Adrenal Hyperplasia:</strong> 10-15 mg/m2/day div q8h PO.", notes: "Contains mineralocorticoid activity." },
+        { cat: "Resp", name: "Caffeine Citrate", dose: "<strong>Apnea of Prematurity:</strong><br>Load: 20 mg/kg IV/PO x 1.<br>Maint: 5-10 mg/kg/day q24h.", notes: "Note: 20 mg Caffeine Citrate = 10 mg Caffeine base. Target level 10-20 mcg/mL." },
+        { cat: "Resp", name: "Aminophylline", dose: "<strong>Load:</strong> 5-6 mg/kg IV over 20-30 mins.<br><strong>Maint:</strong> 1-2 mg/kg/dose IV q6-8h.", notes: "Monitor HR for tachycardia. Used for severe asthma/bronchiolitis." },
+        { cat: "Resp", name: "Salbutamol (Albuterol)", dose: "<strong>Nebulization:</strong> 0.15 mg/kg/dose (Min 1.25mg, Max 5mg) q20min to q4h.", notes: "Can cause hypokalemia and tachycardia." },
+        { cat: "GI", name: "Ondansetron", dose: "<strong>IV/PO:</strong> 0.1-0.15 mg/kg/dose q8h.", notes: "Typical flat dosing: 2mg (<15kg), 4mg (15-30kg), 8mg (>30kg)." },
+        { cat: "GI", name: "Ursodeoxycholic Acid (UDCA)", dose: "<strong>Neonatal Cholestasis:</strong> 10-15 mg/kg/dose PO twice daily.", notes: "Improves bile flow." },
+        { cat: "Renal", name: "Furosemide (Lasix)", dose: "<strong>PO:</strong> 1-2 mg/kg/dose q6-12h.<br><strong>IV:</strong> 1-2 mg/kg/dose q12-24h (Neonates) or q6-12h (Children).", notes: "Ototoxic if pushed fast. Monitor K+ and Ca++ (causes wash out)." },
+        { cat: "Renal", name: "Spironolactone", dose: "<strong>PO:</strong> 1-3 mg/kg/day div q12-24h.", notes: "Potassium-sparing. Do not use if K+ is elevated." },
+        { cat: "Cardiac", name: "Sildenafil", dose: "<strong>PPHN/Pulmonary HTN:</strong> 0.5-2 mg/kg/dose PO q6-8h.<br><strong>IV:</strong> 0.4 mg/kg/hr infusion.", notes: "Monitor for systemic hypotension." },
+        { cat: "Cardiac", name: "Adenosine", dose: "<strong>SVT:</strong> 0.1 mg/kg rapid IV push (Max 6mg). If no effect, 0.2 mg/kg (Max 12mg).", notes: "Must be given rapid IV push followed immediately by rapid NS flush." },
+        { cat: "Electrolyte", name: "Calcium Gluconate (10%)", dose: "<strong>Symptomatic Hypocalcemia:</strong> 1-2 mL/kg/dose IV slowly over 10-30 mins.<br><strong>Cardiac Arrest/Hyperkalemia:</strong> 0.5-1 mL/kg rapid IV.", notes: "Stop if bradycardia occurs. Peripheral extravasation causes tissue necrosis." },
+        { cat: "Misc", name: "Paracetamol (Acetaminophen)", dose: "<strong>Neonates:</strong> 10-15 mg/kg/dose q6-8h.<br><strong>Children:</strong> 10-15 mg/kg/dose PO/PR/IV q4-6h.", notes: "Max 75 mg/kg/day (Child) or 60 mg/kg/day (Neonate). Hepatotoxic in overdose." },
+        { cat: "Misc", name: "Vitamin K (Phytomenadione)", dose: "<strong>Prophylaxis (<1kg):</strong> 0.5 mg IM x 1.<br><strong>Prophylaxis (>1kg):</strong> 1 mg IM x 1.<br><strong>Bleeding:</strong> 1-2 mg IV/IM.", notes: "Give slowly if IV (risk of anaphylaxis)." }
+    ];
+
+    const weightInput = document.getElementById('global-weight');
+    const weightHeader = document.getElementById('weight-header');
+
+    // 12mL Infusion Elements
+    const infSelect = document.getElementById('infusion-select');
+    const ampConc = document.getElementById('amp-conc');
+    const concUnit = document.getElementById('conc-unit');
+    const doseSlider = document.getElementById('dose-slider');
+    const doseVal = document.getElementById('dose-val');
+    const doseUnit = document.getElementById('dose-unit');
+    const drugVolOut = document.getElementById('drug-vol-out');
+    const nsVolOut = document.getElementById('ns-vol-out');
+    const totalDrugMg = document.getElementById('total-drug-mg');
+    const volumeError = document.getElementById('volume-error');
+    const recipeContainer = document.getElementById('recipe-container');
+    const pumpInstruction = document.getElementById('pump-instruction');
+    const modeSelect12 = document.getElementById('mode-select-12');
+    const modeHint12 = document.getElementById('mode-hint-12');
+
+    // 50mL Infusion Elements
+    const infSelect50 = document.getElementById('infusion-select-50');
+    const ampConc50 = document.getElementById('amp-conc-50');
+    const concUnit50 = document.getElementById('conc-unit-50');
+    const doseSlider50 = document.getElementById('dose-slider-50');
+    const doseVal50 = document.getElementById('dose-val-50');
+    const doseUnit50 = document.getElementById('dose-unit-50');
+    const drugVolOut50 = document.getElementById('drug-vol-out-50');
+    const nsVolOut50 = document.getElementById('ns-vol-out-50');
+    const totalDrugMg50 = document.getElementById('total-drug-mg-50');
+    const volumeError50 = document.getElementById('volume-error-50');
+    const recipeContainer50 = document.getElementById('recipe-container-50');
+    const pumpInstruction50 = document.getElementById('pump-instruction-50');
+    const modeSelect50 = document.getElementById('mode-select-50');
+    const modeHint50 = document.getElementById('mode-hint-50');
+
+    // Dextrose Elements
+    const girTarget = document.getElementById('gir-target');
+    const fluidTotalVol = document.getElementById('fluid-total-vol');
+    const fluidExtraVol = document.getElementById('fluid-extra-vol');
+    const netDexRateOut = document.getElementById('net-dex-rate');
+    const dexLowSelect = document.getElementById('dex-low-select');
+    const dexHighSelect = document.getElementById('dex-high-select');
+    const labelLowDex = document.getElementById('label-low-dex');
+    const labelHighDex = document.getElementById('label-high-dex');
+    const reqDexConcOut = document.getElementById('req-dex-conc');
+    const lowVolOut = document.getElementById('low-vol-out');
+    const highVolOut = document.getElementById('high-vol-out');
+    const dexError = document.getElementById('dex-error');
+
+    // Drug Elements
+    const drugSearch = document.getElementById('drug-search');
+    const drugListContainer = document.getElementById('drug-list-container');
+
+    function switchTab(tabId) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+        document.getElementById(`tab-${tabId}`).classList.add('active');
+        event.currentTarget.classList.add('active');
+        weightHeader.style.display = (tabId === 'drugs') ? 'none' : 'flex';
+    }
+
+    function init() {
+        for (let d in infusionDrugs) {
+            let opt1 = document.createElement('option');
+            opt1.value = d;
+            opt1.innerText = d;
+            infSelect.appendChild(opt1);
+
+            let opt2 = document.createElement('option');
+            opt2.value = d;
+            opt2.innerText = d;
+            infSelect50.appendChild(opt2);
+        }
+        infSelect.selectedIndex = 0;
+        infSelect50.selectedIndex = 0;
+        
+        loadInfusionProfile();
+        loadInfusionProfile50();
+        calculateDextrose();
+        renderDrugList("");
+    }
+
+    // --- 12 mL INFUSION MATH ---
+    function loadInfusionProfile() {
+        const d = infusionDrugs[infSelect.value];
+        concUnit.innerText = `${d.prepUnit}/mL`;
+        ampConc.value = d.stdConc;
+        doseUnit.innerText = d.unit;
+        doseSlider.min = d.doseMin;
+        doseSlider.max = d.doseMax;
+        doseSlider.step = d.doseStep;
+        doseSlider.value = d.doseDef;
+        calculateInfusion();
+    }
+
+    function calculateInfusion() {
+        const w = parseFloat(weightInput.value) || 0;
+        const conc = parseFloat(ampConc.value) || 1;
+        const dose = parseFloat(doseSlider.value) || 0;
+        const mode = modeSelect12.value;
+        const d = infusionDrugs[infSelect.value];
+
+        doseVal.innerText = dose.toFixed(2);
+        let totalUnits = 0;
+        let pumpText = "";
+
+        if (mode === "standard") {
+            modeHint12.style.display = "block";
+            if (d.isPerMin && d.prepToDoseMult === 1000) {
+                totalUnits = 0.72 * w; 
+            } else {
+                totalUnits = 12 * w; 
+            }
+            pumpText = `Run Pump at ${dose.toFixed(2)} mL/hr`;
+        } else {
+            modeHint12.style.display = "none";
+            totalUnits = d.isPerMin ? (dose * w * 720) / d.prepToDoseMult : (dose * w * 12) / d.prepToDoseMult;
+            pumpText = `Run Pump at 1.00 mL/hr`;
+        }
+
+        totalDrugMg.innerText = `${totalUnits.toFixed(2)} ${d.prepUnit}`;
+
+        const drugVol = totalUnits / conc;
+        const nsVol = 12 - drugVol;
+
+        drugVolOut.innerText = drugVol.toFixed(2) + " mL";
+        nsVolOut.innerText = nsVol.toFixed(2) + " mL";
+
+        if (drugVol > 12) {
+            volumeError.style.display = "block";
+            recipeContainer.style.opacity = "0.3";
+            pumpInstruction.style.background = "#95a5a6";
+            pumpInstruction.innerText = "Invalid Preparation";
+        } else {
+            volumeError.style.display = "none";
+            recipeContainer.style.opacity = "1";
+            pumpInstruction.style.background = "var(--primary)";
+            pumpInstruction.innerText = pumpText;
+        }
+    }
+
+    // --- 50 mL INFUSION MATH ---
+    function loadInfusionProfile50() {
+        const d = infusionDrugs[infSelect50.value];
+        concUnit50.innerText = `${d.prepUnit}/mL`;
+        ampConc50.value = d.stdConc;
+        doseUnit50.innerText = d.unit;
+        doseSlider50.min = d.doseMin;
+        doseSlider50.max = d.doseMax;
+        doseSlider50.step = d.doseStep;
+        doseSlider50.value = d.doseDef;
+        calculateInfusion50();
+    }
+
+    function calculateInfusion50() {
+        const w = parseFloat(weightInput.value) || 0;
+        const conc = parseFloat(ampConc50.value) || 1;
+        const dose = parseFloat(doseSlider50.value) || 0;
+        const mode = modeSelect50.value;
+        const d = infusionDrugs[infSelect50.value];
+
+        doseVal50.innerText = dose.toFixed(2);
+        let totalUnits = 0;
+        let pumpText = "";
+
+        if (mode === "standard") {
+            modeHint50.style.display = "block";
+            if (d.isPerMin && d.prepToDoseMult === 1000) {
+                totalUnits = 3 * w; 
+            } else {
+                totalUnits = 50 * w; 
+            }
+            pumpText = `Run Pump at ${dose.toFixed(2)} mL/hr`;
+        } else {
+            modeHint50.style.display = "none";
+            // Fixed 2 mL/hr logic (25 hours of drug in 50 mL syringe)
+            totalUnits = d.isPerMin ? (dose * w * 1500) / d.prepToDoseMult : (dose * w * 25) / d.prepToDoseMult;
+            pumpText = `Run Pump at 2.00 mL/hr`;
+        }
+
+        totalDrugMg50.innerText = `${totalUnits.toFixed(2)} ${d.prepUnit}`;
+
+        const drugVol = totalUnits / conc;
+        const nsVol = 50 - drugVol;
+
+        drugVolOut50.innerText = drugVol.toFixed(2) + " mL";
+        nsVolOut50.innerText = nsVol.toFixed(2) + " mL";
+
+        if (drugVol > 50) {
+            volumeError50.style.display = "block";
+            recipeContainer50.style.opacity = "0.3";
+            pumpInstruction50.style.background = "#95a5a6";
+            pumpInstruction50.innerText = "Invalid Preparation";
+        } else {
+            volumeError50.style.display = "none";
+            recipeContainer50.style.opacity = "1";
+            pumpInstruction50.style.background = "var(--purple)";
+            pumpInstruction50.innerText = pumpText;
+        }
+    }
+
+    // --- DEXTROSE MATH ---
+    function calculateDextrose() {
+        const w = parseFloat(weightInput.value) || 0;
+        const gir = parseFloat(girTarget.value) || 0;
+        const totalVolDay = parseFloat(fluidTotalVol.value) || 0; 
+        const extraVolDay = parseFloat(fluidExtraVol.value) || 0; 
+        const lowDexPercent = parseFloat(dexLowSelect.value);
+        const highDexPercent = parseFloat(dexHighSelect.value);
+        
+        labelLowDex.innerText = `D${lowDexPercent}W Volume:`;
+        labelHighDex.innerText = `D${highDexPercent}W Volume:`;
+
+        const netVolDay = Math.max(0, totalVolDay - extraVolDay);
+        const netHourlyRate = netVolDay / 24; 
+
+        netDexRateOut.innerText = netHourlyRate.toFixed(1);
+
+        if (w > 0 && netHourlyRate > 0) {
+            const reqDex = (gir * w * 60) / (netHourlyRate * 10);
+            reqDexConcOut.innerText = reqDex.toFixed(1);
+
+            if (reqDex < lowDexPercent || reqDex > highDexPercent || lowDexPercent >= highDexPercent) {
+                dexError.style.display = "block";
+                highVolOut.innerText = "ERR";
+                lowVolOut.innerText = "ERR";
+                return;
+            } else {
+                dexError.style.display = "none";
+            }
+
+            const partsDiff = highDexPercent - lowDexPercent;
+            const partsHigh = reqDex - lowDexPercent;
+            const highVolume = (partsHigh / partsDiff) * 50;
+            const lowVolume = 50 - highVolume;
+
+            highVolOut.innerText = highVolume.toFixed(1) + " mL";
+            lowVolOut.innerText = lowVolume.toFixed(1) + " mL";
+        } else {
+            reqDexConcOut.innerText = "0.0";
+            highVolOut.innerText = "0.0 mL";
+            lowVolOut.innerText = "0.0 mL";
+            dexError.style.display = "none";
+        }
+    }
+
+    // --- RENDER DRUGS ---
+    function renderDrugList(query) {
+        drugListContainer.innerHTML = "";
+        const lowerQ = query.toLowerCase();
+        
+        const filtered = pedDoses.filter(d => 
+            d.name.toLowerCase().includes(lowerQ) || 
+            d.dose.toLowerCase().includes(lowerQ) ||
+            d.notes.toLowerCase().includes(lowerQ) ||
+            d.cat.toLowerCase().includes(lowerQ)
+        );
+        
+        if (filtered.length === 0) {
+            drugListContainer.innerHTML = `<div class="drug-item" style="text-align:center; color: #7f8c8d;">No results found for "${query}"</div>`;
+            return;
+        }
+
+        filtered.forEach(drug => {
+            const el = document.createElement('div');
+            el.className = 'drug-item';
+            el.innerHTML = `
+                <div class="drug-name">
+                    <span>${drug.name}</span>
+                    <span class="drug-cat">${drug.cat}</span>
+                </div>
+                <div class="drug-dose">${drug.dose}</div>
+                <div class="drug-notes">${drug.notes}</div>
+            `;
+            drugListContainer.appendChild(el);
+        });
+    }
+
+    function downloadHTML() {
+        const htmlContent = document.documentElement.outerHTML;
+        const blob = new Blob([htmlContent], { type: 'text/html' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'Pediatric_Dosing_App.html';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+    }
+
+    // Listeners: 12 mL
+    infSelect.addEventListener('change', loadInfusionProfile);
+    ampConc.addEventListener('input', calculateInfusion);
+    doseSlider.addEventListener('input', calculateInfusion);
+    modeSelect12.addEventListener('change', calculateInfusion);
+
+    // Listeners: 50 mL
+    infSelect50.addEventListener('change', loadInfusionProfile50);
+    ampConc50.addEventListener('input', calculateInfusion50);
+    doseSlider50.addEventListener('input', calculateInfusion50);
+    modeSelect50.addEventListener('change', calculateInfusion50);
+
+    // Listeners: Shared / Global
+    weightInput.addEventListener('input', () => { 
+        calculateInfusion(); 
+        calculateInfusion50(); 
+        calculateDextrose(); 
+    });
+    
+    // Listeners: Dextrose
+    girTarget.addEventListener('input', calculateDextrose);
+    fluidTotalVol.addEventListener('input', calculateDextrose);
+    fluidExtraVol.addEventListener('input', calculateDextrose);
+    dexLowSelect.addEventListener('change', calculateDextrose);
+    dexHighSelect.addEventListener('change', calculateDextrose);
+
+    // Listeners: Drugs
+    drugSearch.addEventListener('input', (e) => renderDrugList(e.target.value));
+
+    init();
+</script>
+
+</body>
+</html>
