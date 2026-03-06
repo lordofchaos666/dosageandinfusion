@@ -334,6 +334,7 @@
                 </div>
                 <div id="dex-error" class="error-text">Target concentration falls outside your selected Base/High limits!</div>
             </div>
+            <button class="btn-download" onclick="downloadHTML()">📥 Download App to Device</button>
         </div>
 
         <div id="tab-drugs" class="tab-content">
@@ -418,6 +419,24 @@
     const customDoseOut50 = document.getElementById('custom-dose-out-50');
     const customDoseUnit50 = document.getElementById('custom-dose-unit-50');
 
+    // Dextrose Elements
+    const girTarget = document.getElementById('gir-target');
+    const fluidTotalVol = document.getElementById('fluid-total-vol');
+    const fluidExtraVol = document.getElementById('fluid-extra-vol');
+    const netDexRateOut = document.getElementById('net-dex-rate');
+    const dexLowSelect = document.getElementById('dex-low-select');
+    const dexHighSelect = document.getElementById('dex-high-select');
+    const labelLowDex = document.getElementById('label-low-dex');
+    const labelHighDex = document.getElementById('label-high-dex');
+    const reqDexConcOut = document.getElementById('req-dex-conc');
+    const lowVolOut = document.getElementById('low-vol-out');
+    const highVolOut = document.getElementById('high-vol-out');
+    const dexError = document.getElementById('dex-error');
+
+    // Drug Elements
+    const drugSearch = document.getElementById('drug-search');
+    const drugListContainer = document.getElementById('drug-list-container');
+
     function switchTab(tabId) {
         document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
         document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
@@ -455,10 +474,10 @@
             opt2.innerText = d;
             infSelect50.appendChild(opt2);
         }
-        // Force sync logic on boot
         loadInfusionProfile();
         loadInfusionProfile50();
         toggleModes();
+        calculateDextrose();
         renderDrugList("");
     }
 
@@ -557,7 +576,6 @@
         const d = infusionDrugs[infSelect50.value];
         let dose = parseFloat(doseSlider50.value) || 0;
 
-        // Custom Reverse Calc Math for your Midazolam example
         if (mode === "custom") {
             const vol = parseFloat(customDrugVol50.value) || 0;
             const rate = parseFloat(customRate50.value) || 0;
@@ -612,6 +630,51 @@
         pumpInstruction50.innerText = pumpText;
     }
 
+    // --- DEXTROSE MATH ---
+    function calculateDextrose() {
+        const w = parseFloat(weightInput.value) || 0;
+        const gir = parseFloat(girTarget.value) || 0;
+        const totalVolDay = parseFloat(fluidTotalVol.value) || 0; 
+        const extraVolDay = parseFloat(fluidExtraVol.value) || 0; 
+        const lowDexPercent = parseFloat(dexLowSelect.value);
+        const highDexPercent = parseFloat(dexHighSelect.value);
+        
+        labelLowDex.innerText = `D${lowDexPercent}W Volume:`;
+        labelHighDex.innerText = `D${highDexPercent}W Volume:`;
+
+        const netVolDay = Math.max(0, totalVolDay - extraVolDay);
+        const netHourlyRate = netVolDay / 24; 
+
+        netDexRateOut.innerText = netHourlyRate.toFixed(1);
+
+        if (w > 0 && netHourlyRate > 0) {
+            const reqDex = (gir * w * 60) / (netHourlyRate * 10);
+            reqDexConcOut.innerText = reqDex.toFixed(1);
+
+            if (reqDex < lowDexPercent || reqDex > highDexPercent || lowDexPercent >= highDexPercent) {
+                dexError.style.display = "block";
+                highVolOut.innerText = "ERR";
+                lowVolOut.innerText = "ERR";
+                return;
+            } else {
+                dexError.style.display = "none";
+            }
+
+            const partsDiff = highDexPercent - lowDexPercent;
+            const partsHigh = reqDex - lowDexPercent;
+            const highVolume = (partsHigh / partsDiff) * 50;
+            const lowVolume = 50 - highVolume;
+
+            highVolOut.innerText = highVolume.toFixed(1) + " mL";
+            lowVolOut.innerText = lowVolume.toFixed(1) + " mL";
+        } else {
+            reqDexConcOut.innerText = "0.0";
+            highVolOut.innerText = "0.0 mL";
+            lowVolOut.innerText = "0.0 mL";
+            dexError.style.display = "none";
+        }
+    }
+
     // --- RENDER DRUGS ---
     function renderDrugList(query) {
         const lowerQ = query.toLowerCase();
@@ -628,7 +691,7 @@
         });
     }
 
-    // Listeners
+    // Listeners: 12 mL
     infSelect.addEventListener('change', loadInfusionProfile);
     ampConc.addEventListener('input', calculateInfusion);
     doseSlider.addEventListener('input', calculateInfusion);
@@ -636,6 +699,7 @@
     customDrugVol12.addEventListener('input', calculateInfusion);
     customRate12.addEventListener('input', calculateInfusion);
 
+    // Listeners: 50 mL
     infSelect50.addEventListener('change', loadInfusionProfile50);
     ampConc50.addEventListener('input', calculateInfusion50);
     doseSlider50.addEventListener('input', calculateInfusion50);
@@ -643,7 +707,21 @@
     customDrugVol50.addEventListener('input', calculateInfusion50);
     customRate50.addEventListener('input', calculateInfusion50);
 
-    weightInput.addEventListener('input', () => { calculateInfusion(); calculateInfusion50(); });
+    // Listeners: Shared / Global
+    weightInput.addEventListener('input', () => { 
+        calculateInfusion(); 
+        calculateInfusion50(); 
+        calculateDextrose(); 
+    });
+    
+    // Listeners: Dextrose
+    girTarget.addEventListener('input', calculateDextrose);
+    fluidTotalVol.addEventListener('input', calculateDextrose);
+    fluidExtraVol.addEventListener('input', calculateDextrose);
+    dexLowSelect.addEventListener('change', calculateDextrose);
+    dexHighSelect.addEventListener('change', calculateDextrose);
+
+    // Listeners: Drugs
     document.getElementById('drug-search').addEventListener('input', (e) => renderDrugList(e.target.value));
 
     init();
