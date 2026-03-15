@@ -41,7 +41,7 @@ body{display:flex;justify-content:center}
 .wbar-kg{font-weight:700;color:var(--tx3);font-size:.9rem}
 
 /* Content */
-.content{flex:1;overflow-y:auto;padding:12px;-webkit-overflow-scrolling:touch}
+.content{flex:1;overflow-y:auto;padding:12px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px));-webkit-overflow-scrolling:touch}
 .tab-pane{display:none}
 .tab-pane.active{display:block}
 
@@ -461,7 +461,7 @@ const DRUGS = {
  "Dobutamine": {
    alias:"", cat:"Inotrope",
    unit:"mcg/kg/min", prepUnit:"mg", isPerMin:true,
-   stdConc:12.5, vials:[{v:12.5,l:"12.5 mg/mL (250mg/20mL)"},{v:25,l:"25 mg/mL"}],
+   stdConc:12.5, vials:[{v:12.5,l:"12.5 mg/mL (250mg/20mL)"},{v:6.25,l:"6.25 mg/mL (diluted 1:1)"}],
    doseMin:2, doseMax:20, doseStep:1, doseDef:5,
    indication:"Cardiogenic shock · Low cardiac output states",
    dosing:[
@@ -542,14 +542,15 @@ const DRUGS = {
    alias:"", cat:"Pulm. Vasodilator",
    unit:"mg/kg/hr", prepUnit:"mg", isPerMin:false,
    stdConc:0.8, vials:[{v:0.8,l:"0.8 mg/mL"}],
-   doseMin:0.03, doseMax:0.4, doseStep:0.01, doseDef:0.07,
+   doseMin:0.03, doseMax:0.1, doseStep:0.01, doseDef:0.07,
    indication:"PPHN · Pulmonary arterial hypertension",
    dosing:[
      ["Route","Dose"],
-     ["IV infusion","0.03 – 0.1 mg/kg/hr"],
+     ["IV infusion (standard)","0.03 – 0.07 mg/kg/hr"],
+     ["IV infusion (max BNFc)","0.1 mg/kg/hr"],
      ["Oral (maintenance)","0.25 – 1 mg/kg q6–8h"],
    ],
-   notes:"PDE-5 inhibitor. Monitor systemic BP (hypotension risk). Transition to oral when stable."
+   notes:"PDE-5 inhibitor. Monitor systemic BP (hypotension risk). IV max is 0.1 mg/kg/hr per BNFc. Transition to oral when stable."
  },
  "Labetalol": {
    alias:"", cat:"Antihypertensive",
@@ -586,9 +587,9 @@ const DRUGS = {
    indication:"Ductal-dependent congenital heart disease (TGA, PA, CoA, HLHS)",
    dosing:[
      ["Phase","Dose (mcg/kg/min)"],
-     ["Starting","0.05 – 0.1"],
+     ["Starting (low, titrate up)","0.01 – 0.05"],
      ["Maintenance","0.01 – 0.05"],
-     ["Maximum","0.4"],
+     ["Maximum (rarely needed)","up to 0.4"],
    ],
    notes:"⚠️ Apnoea in 10–12% — prepare for intubation before starting. Do NOT abruptly stop. Use diluted form (10 mcg/mL) for small neonates."
  },
@@ -764,8 +765,9 @@ function onSlider(tab){
 }
 function onDoseInput(tab){
   const d=DRUGS[S[tab].drug];
-  const v=parseFloat(document.getElementById('dinp-'+tab).value)||d.doseMin;
-  const clamped=Math.min(Math.max(v,d.doseMin),d.doseMax);
+  const raw=document.getElementById('dinp-'+tab).value;
+  const v=(raw===''||raw===null)?d.doseMin:parseFloat(raw);
+  const clamped=Math.min(Math.max(isNaN(v)?d.doseMin:v,d.doseMin),d.doseMax);
   S[tab].dose=clamped;
   document.getElementById('slider-'+tab).value=clamped;
   document.getElementById('dbig-'+tab).textContent=clamped.toFixed(dec(d.doseStep));
@@ -830,7 +832,7 @@ function calc(tab){
 
     document.getElementById('r-drug-'+tab).textContent=vol.toFixed(2)+' mL';
     document.getElementById('r-mg-'+tab).textContent=`(${(vol*conc).toFixed(2)} ${d.prepUnit} total)`;
-    document.getElementById('r-ns-'+tab).textContent=nsVol.toFixed(2)+' mL NS → 50 mL total';
+    document.getElementById('r-ns-'+tab).textContent=nsVol.toFixed(2)+' mL NS → '+sv+' mL total';
 
     const cdEl=document.getElementById('cdose-'+tab);
     if(cdEl) cdEl.textContent=(w>0&&rate>0&&vol>0)?finalDose.toFixed(ddec):'—';
@@ -844,6 +846,7 @@ function calc(tab){
   // Fixed rate mode
   if(w<=0){
     document.getElementById('r-drug-'+tab).textContent='—';
+    document.getElementById('r-mg-'+tab).textContent='';
     document.getElementById('r-ns-'+tab).textContent='—';
     document.getElementById('pump-'+tab).textContent='Enter patient weight';
     return;
@@ -857,11 +860,7 @@ function calc(tab){
     ?`(${res.totalUnits.toFixed(1)} ${d.prepUnit} total)`
     :`(${res.totalUnits.toFixed(2)} ${d.prepUnit} total)`;
   document.getElementById('r-mg-'+tab).textContent=totLabel;
-  document.getElementById('r-ns-'+tab).textContent=res.neat
-    ?`0 mL NS (undiluted / neat)`
-    :`${res.nsVol.toFixed(2)} mL NS`;
-
-  // Update NS label text
+  // Single assignment (no duplicate):
   document.getElementById('r-ns-'+tab).textContent=res.neat
     ?`Undiluted — 0 mL NS needed`
     :`${res.nsVol.toFixed(2)} mL NS`;
